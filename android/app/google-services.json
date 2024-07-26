@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "1086571491646",
+    "firebase_url": "https://minibus-8643f-default-rtdb.asia-southeast1.firebasedatabase.app/",
+    "project_id": "minibus-8643f",
+    "storage_bucket": "minibus-8643f.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1086571491646:android:3a764ed384271a80a6fc6f",
+        "android_client_info": {
+          "package_name": "com.example.mini_bus_routes"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAYlRH85qgitYxg9bWG-CDSZwkCnMxiWhI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

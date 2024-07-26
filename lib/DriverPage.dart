@@ -16,6 +16,7 @@ class _DriverPageState extends State<DriverPage> {
   LatLng _initialPosition = LatLng(0, 0);
   MapType _currentMapType = MapType.normal;
   int _selectedIndex = 0;
+  BitmapDescriptor? customIcon;
 
   // Initialize a list with default boolean values set to false for each seat
   List<bool> _seatSelected = List.generate(25, (index) => false);
@@ -27,6 +28,14 @@ class _DriverPageState extends State<DriverPage> {
     super.initState();
     _checkPermissions();
     _loadSeatData(); // Load initial seat data from Firebase
+    _loadCustomMarker();
+  }
+
+  Future<void> _loadCustomMarker() async {
+    customIcon = await BitmapDescriptor.fromAssetImage(
+      ImageConfiguration(size: Size(1, 1)),
+      'Imagess/jeepney.png',
+    );
   }
 
   Future<void> _checkPermissions() async {
@@ -119,6 +128,13 @@ class _DriverPageState extends State<DriverPage> {
                 },
                 myLocationEnabled: true,
                 myLocationButtonEnabled: true,
+                markers: {
+                  Marker(
+                    markerId: MarkerId('currentLocation'),
+                    position: _initialPosition,
+                    icon: customIcon ?? BitmapDescriptor.defaultMarker,
+                  ),
+                },
               ),
               Positioned(
                 bottom: 100,

@@ -72,6 +72,7 @@ flutter:
      - Imagess/people3.png
      - Imagess/human.png
      - Imagess/arm-up.png
+     - Imagess/jeepney.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware

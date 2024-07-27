@@ -15,13 +15,13 @@ class _DriverPageState extends State<DriverPage> {
   GoogleMapController? _mapController;
   LatLng _initialPosition = LatLng(0, 0);
   MapType _currentMapType = MapType.normal;
-  int _selectedIndex = 0;
   BitmapDescriptor? customIcon;
 
   // Initialize a list with default boolean values set to false for each seat
   List<bool> _seatSelected = List.generate(25, (index) => false);
 
   final DatabaseReference _databaseRef = FirebaseDatabase.instance.ref().child('Seats');
+  bool _showSeats = true;
 
   @override
   void initState() {
@@ -33,8 +33,8 @@ class _DriverPageState extends State<DriverPage> {
 
   Future<void> _loadCustomMarker() async {
     customIcon = await BitmapDescriptor.fromAssetImage(
-      ImageConfiguration(size: Size(1, 1)),
-      'Imagess/jeepney.png',
+      ImageConfiguration(size: Size(45, 45)),
+      'Imagess/bus2.png',
     );
   }
 
@@ -83,12 +83,6 @@ class _DriverPageState extends State<DriverPage> {
     });
   }
 
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
   void _onSeatTapped(int index) {
     setState(() {
       // Toggle the boolean value for the seat
@@ -111,73 +105,30 @@ class _DriverPageState extends State<DriverPage> {
   }
 
   Widget _buildMap() {
-    return Column(
-      children: [
-        Container(
-          height: 300.0,
-          child: Stack(
-            children: [
-              GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: _initialPosition,
-                  zoom: 14.0,
-                ),
-                mapType: _currentMapType,
-                onMapCreated: (GoogleMapController controller) {
-                  _mapController = controller;
-                },
-                myLocationEnabled: true,
-                myLocationButtonEnabled: true,
-                markers: {
-                  Marker(
-                    markerId: MarkerId('currentLocation'),
-                    position: _initialPosition,
-                    icon: customIcon ?? BitmapDescriptor.defaultMarker,
-                  ),
-                },
-              ),
-              Positioned(
-                bottom: 100,
-                right: 10,
-                child: FloatingActionButton(
-                  onPressed: () {},
-                  child: PopupMenuButton<MapType>(
-                    icon: Icon(Icons.map),
-                    onSelected: _onMapTypeChanged,
-                    itemBuilder: (BuildContext context) => <PopupMenuEntry<MapType>>[
-                      const PopupMenuItem<MapType>(
-                        value: MapType.normal,
-                        child: Text('Normal'),
-                      ),
-                      const PopupMenuItem<MapType>(
-                        value: MapType.satellite,
-                        child: Text('Satellite'),
-                      ),
-                      const PopupMenuItem<MapType>(
-                        value: MapType.terrain,
-                        child: Text('Terrain'),
-                      ),
-                      const PopupMenuItem<MapType>(
-                        value: MapType.hybrid,
-                        child: Text('Hybrid'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: _initialPosition,
+        zoom: 14.0,
+      ),
+      mapType: _currentMapType,
+      onMapCreated: (GoogleMapController controller) {
+        _mapController = controller;
+      },
+      myLocationEnabled: true,
+      myLocationButtonEnabled: true,
+      markers: {
+        Marker(
+          markerId: MarkerId('currentLocation'),
+          position: _initialPosition,
+          icon: customIcon ?? BitmapDescriptor.defaultMarker,
         ),
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text(_address, style: TextStyle(fontSize: 18)),
-        ),
-      ],
+      },
     );
   }
 
   Widget _buildSeats() {
-    return SingleChildScrollView(
+    return _showSeats
+        ? SingleChildScrollView(
       child: Column(
         children: [
           Text("Driver Seat", style: TextStyle(fontSize: 18)),
@@ -201,7 +152,8 @@ class _DriverPageState extends State<DriverPage> {
           _buildSeatRow([21, 22, 23, 24]),
         ],
       ),
-    );
+    )
+        : Container(); // Return an empty container if not showing seats
   }
 
   Widget _buildSeatRow(List<int?> seatIndices, [String? label]) {
@@ -250,26 +202,97 @@ class _DriverPageState extends State<DriverPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Driver Page'),
-      ),
-      body: SingleChildScrollView(
-        child: _selectedIndex == 0 ? _buildMap() : _buildSeats(),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.map),
-            label: 'Map',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.event_seat),
-            label: 'Seats',
+      body: Stack(
+        children: [
+          _buildMap(),
+          DraggableScrollableSheet(
+            initialChildSize: 0.3,
+            minChildSize: 0.2,
+            maxChildSize: 0.6,
+            builder: (BuildContext context, ScrollController scrollController) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 10,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      height: 5,
+                      width: 40,
+                      margin: EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey, // Gray color for the line
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text(_address, style: TextStyle(fontSize: 18)),
+                    ),
+                    // Navigation Bar for "For Pick Up" and "Seats"
+                    Container(
+                      color: Colors.blue,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _showSeats = false; // Hide seats when "For Pick Up" is selected
+                                });
+                              },
+                              child: Text(
+                                'For Pick Up',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ),
+                          Container(
+                            height: 24,
+                            width: 1,
+                            color: Colors.white,
+                          ),
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _showSeats = true; // Show seats when "Seats" is selected
+                                });
+                              },
+                              child: Text(
+                                'Seats',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        children: [
+                          _showSeats ? _buildSeats() : Container(), // Show seats based on state
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.blue,
-        onTap: _onItemTapped,
       ),
     );
   }

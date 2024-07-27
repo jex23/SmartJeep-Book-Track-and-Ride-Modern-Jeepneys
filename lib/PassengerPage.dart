@@ -43,7 +43,7 @@ class _PassengerPageState extends State<PassengerPage> {
   Future<void> _loadCustomMarker() async {
     customIcon = await BitmapDescriptor.fromAssetImage(
       ImageConfiguration(size: Size(1, 1)),
-      'Imagess/arm-up.png',
+      'Imagess/bus2.png',
     );
   }
 

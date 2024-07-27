@@ -1,13 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'DriverPage.dart';
 import 'RoleSelectionPage.dart';
 
-class DriverLoginPage extends StatelessWidget {
+class DriverLoginPage extends StatefulWidget {
+  @override
+  _DriverLoginPageState createState() => _DriverLoginPageState();
+}
+
+class _DriverLoginPageState extends State<DriverLoginPage> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _rememberMe = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? savedEmail = prefs.getString('email');
+    String? savedPassword = prefs.getString('password');
+    if (savedEmail != null && savedPassword != null) {
+      _emailController.text = savedEmail;
+      _passwordController.text = savedPassword;
+      _rememberMe = true;
+    }
+    setState(() {});
+  }
+
+  Future<void> _savePreferences(String email, String password) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (_rememberMe) {
+      await prefs.setString('email', email);
+      await prefs.setString('password', password);
+    } else {
+      await prefs.remove('email');
+      await prefs.remove('password');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final TextEditingController emailController = TextEditingController();
-    final TextEditingController passwordController = TextEditingController();
-
     return Scaffold(
       appBar: AppBar(
         title: Text('Driver Login'),
@@ -40,7 +76,7 @@ class DriverLoginPage extends StatelessWidget {
                 ),
                 SizedBox(height: 20),
                 TextField(
-                  controller: emailController,
+                  controller: _emailController,
                   decoration: InputDecoration(
                     labelText: 'Email',
                     border: OutlineInputBorder(
@@ -50,7 +86,7 @@ class DriverLoginPage extends StatelessWidget {
                 ),
                 SizedBox(height: 20),
                 TextField(
-                  controller: passwordController,
+                  controller: _passwordController,
                   decoration: InputDecoration(
                     labelText: 'Password',
                     border: OutlineInputBorder(
@@ -60,12 +96,27 @@ class DriverLoginPage extends StatelessWidget {
                   obscureText: true,
                 ),
                 SizedBox(height: 20),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _rememberMe,
+                      onChanged: (bool? value) {
+                        setState(() {
+                          _rememberMe = value ?? false;
+                        });
+                      },
+                    ),
+                    Text('Remember Me')
+                  ],
+                ),
+                SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: () {
-                    String email = emailController.text;
-                    String password = passwordController.text;
+                  onPressed: () async {
+                    String email = _emailController.text;
+                    String password = _passwordController.text;
 
                     if (email == 'driver@example.com' && password == '12345678') {
+                      await _savePreferences(email, password);
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (context) => DriverPage()),

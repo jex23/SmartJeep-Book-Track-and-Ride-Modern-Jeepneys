@@ -14,14 +14,19 @@ class _DriverPageState extends State<DriverPage> {
   String _address = "Fetching address...";
   GoogleMapController? _mapController;
   LatLng _initialPosition = LatLng(0, 0);
-  MapType _currentMapType = MapType.normal;
+  MapType _currentMapType = MapType.satellite;
   BitmapDescriptor? customIcon;
 
   // Initialize a list with default boolean values set to false for each seat
   List<bool> _seatSelected = List.generate(25, (index) => false);
 
   final DatabaseReference _databaseRef = FirebaseDatabase.instance.ref().child('Seats');
-  bool _showSeats = true;
+
+  // State variables
+  bool _showSeats = false;
+  bool _isExpanded = false;
+
+  final DraggableScrollableController _draggableController = DraggableScrollableController();
 
   @override
   void initState() {
@@ -85,10 +90,8 @@ class _DriverPageState extends State<DriverPage> {
 
   void _onSeatTapped(int index) {
     setState(() {
-      // Toggle the boolean value for the seat
       _seatSelected[index] = !_seatSelected[index];
-      // Update the seat status in Firebase
-      String seatPath = 'Seat${index + 1}'; // Path: Seat1, Seat2, etc.
+      String seatPath = 'Seat${index + 1}';
       _databaseRef.child(seatPath).set(_seatSelected[index]);
     });
   }
@@ -103,6 +106,9 @@ class _DriverPageState extends State<DriverPage> {
       }
     });
   }
+
+  int get availableSeats => _seatSelected.where((selected) => !selected).length;
+  int get occupiedSeats => _seatSelected.where((selected) => selected).length;
 
   Widget _buildMap() {
     return GoogleMap(
@@ -127,8 +133,7 @@ class _DriverPageState extends State<DriverPage> {
   }
 
   Widget _buildSeats() {
-    return _showSeats
-        ? SingleChildScrollView(
+    return SingleChildScrollView(
       child: Column(
         children: [
           Text("Driver Seat", style: TextStyle(fontSize: 18)),
@@ -152,8 +157,7 @@ class _DriverPageState extends State<DriverPage> {
           _buildSeatRow([21, 22, 23, 24]),
         ],
       ),
-    )
-        : Container(); // Return an empty container if not showing seats
+    );
   }
 
   Widget _buildSeatRow(List<int?> seatIndices, [String? label]) {
@@ -177,15 +181,15 @@ class _DriverPageState extends State<DriverPage> {
                   width: 50, // Adjust width as necessary
                   height: 50, // Adjust height as necessary
                   decoration: BoxDecoration(
-                    color: _seatSelected[index] ? Colors.green : Colors.grey, // Color based on seat status
-                    borderRadius: BorderRadius.circular(8), // Rounded corners
-                    border: Border.all(color: Colors.black12), // Optional border
+                    color: _seatSelected[index] ? Colors.green : Colors.grey,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.black12),
                   ),
                   child: Center(
                     child: Text(
                       "Seat ${index + 1}",
                       style: TextStyle(
-                        color: Colors.white, // Text color
+                        color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -199,8 +203,19 @@ class _DriverPageState extends State<DriverPage> {
     );
   }
 
+  void _expandSheet() {
+    _draggableController.animateTo(
+      0.6, // Adjust this value if needed to fit your design
+      duration: Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final safeAreaBottom = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
       body: Stack(
         children: [
@@ -209,88 +224,168 @@ class _DriverPageState extends State<DriverPage> {
             initialChildSize: 0.3,
             minChildSize: 0.2,
             maxChildSize: 0.6,
+            controller: _draggableController,
             builder: (BuildContext context, ScrollController scrollController) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    topRight: Radius.circular(16),
+              return GestureDetector(
+                onVerticalDragUpdate: (details) {
+                  // Allow the sheet to be dragged up and down
+                },
+                onTap: () {
+                  setState(() {
+                    _isExpanded = !_isExpanded;
+                    _draggableController.animateTo(
+                      _isExpanded ? 0.6 : 0.3,
+                      duration: Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  });
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 10,
+                        spreadRadius: 5,
+                      ),
+                    ],
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 10,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      height: 5,
-                      width: 40,
-                      margin: EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey, // Gray color for the line
-                        borderRadius: BorderRadius.circular(10),
+                  child: Column(
+                    children: [
+                      Container(
+                        height: 5,
+                        width: 40,
+                        margin: EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Text(_address, style: TextStyle(fontSize: 18)),
-                    ),
-                    // Navigation Bar for "For Pick Up" and "Seats"
-                    Container(
-                      color: Colors.blue,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextButton(
-                              onPressed: () {
-                                setState(() {
-                                  _showSeats = false; // Hide seats when "For Pick Up" is selected
-                                });
-                              },
-                              child: Text(
-                                'For Pick Up',
-                                style: TextStyle(color: Colors.white),
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            left: 16.0,
+                            right: 16.0,
+                            bottom: safeAreaBottom + 8.0,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _address,
+                                style: TextStyle(fontSize: 18),
                               ),
-                            ),
-                          ),
-                          Container(
-                            height: 24,
-                            width: 1,
-                            color: Colors.white,
-                          ),
-                          Expanded(
-                            child: TextButton(
-                              onPressed: () {
-                                setState(() {
-                                  _showSeats = true; // Show seats when "Seats" is selected
-                                });
-                              },
-                              child: Text(
-                                'Seats',
-                                style: TextStyle(color: Colors.white),
+                              SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Available Seats: $availableSeats',
+                                    style: TextStyle(fontSize: 16),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Occupied Seats: $occupiedSeats',
+                                    style: TextStyle(fontSize: 16),
+                                  ),
+                                ],
                               ),
-                            ),
+                              SizedBox(height: 20),
+                              // Navigation Bar for "For Pick Up" and "Seats"
+                              Container(
+                                color: Colors.blue,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                  children: [
+                                    Expanded(
+                                      child: TextButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _showSeats = false; // Hide seats when "For Pick Up" is clicked
+                                          });
+                                          _expandSheet(); // Ensure the sheet is fully extended
+                                        },
+                                        child: Text(
+                                          'For Pick Up',
+                                          style: TextStyle(color: Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      height: 24,
+                                      width: 1,
+                                      color: Colors.white,
+                                    ),
+                                    Expanded(
+                                      child: TextButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _showSeats = true; // Show seats when "Seats" is clicked
+                                          });
+                                          _expandSheet(); // Ensure the sheet is fully extended
+                                        },
+                                        child: Text(
+                                          'Seats',
+                                          style: TextStyle(color: Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: ListView(
+                                    controller: scrollController,
+                                    children: [
+                                      _showSeats ? _buildSeats() : Container(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: ListView(
-                        controller: scrollController,
-                        children: [
-                          _showSeats ? _buildSeats() : Container(), // Show seats based on state
-                        ],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
+          ),
+          Positioned(
+            top: 40,
+            right: 10,
+            child: FloatingActionButton(
+              onPressed: () {},
+              child: PopupMenuButton<MapType>(
+                icon: Icon(Icons.map),
+                onSelected: _onMapTypeChanged,
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<MapType>>[
+                  const PopupMenuItem<MapType>(
+                    value: MapType.normal,
+                    child: Text('Normal'),
+                  ),
+                  const PopupMenuItem<MapType>(
+                    value: MapType.satellite,
+                    child: Text('Satellite'),
+                  ),
+                  const PopupMenuItem<MapType>(
+                    value: MapType.terrain,
+                    child: Text('Terrain'),
+                  ),
+                  const PopupMenuItem<MapType>(
+                    value: MapType.hybrid,
+                    child: Text('Hybrid'),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),

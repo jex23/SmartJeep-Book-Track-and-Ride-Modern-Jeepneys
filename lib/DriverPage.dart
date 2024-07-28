@@ -1,3 +1,4 @@
+import 'dart:async'; // Import for StreamSubscription
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
@@ -16,6 +17,7 @@ class _DriverPageState extends State<DriverPage> {
   LatLng _initialPosition = LatLng(0, 0);
   MapType _currentMapType = MapType.satellite;
   BitmapDescriptor? customIcon;
+  Marker? _currentLocationMarker;
 
   // Initialize a list with default boolean values set to false for each seat
   List<bool> _seatSelected = List.generate(25, (index) => false);
@@ -25,6 +27,7 @@ class _DriverPageState extends State<DriverPage> {
   // State variables
   bool _showSeats = false;
   bool _isExpanded = false;
+  late StreamSubscription<Position> _positionStreamSubscription;
 
   final DraggableScrollableController _draggableController = DraggableScrollableController();
 
@@ -34,6 +37,7 @@ class _DriverPageState extends State<DriverPage> {
     _checkPermissions();
     _loadSeatData(); // Load initial seat data from Firebase
     _loadCustomMarker();
+    _startLocationUpdates(); // Start location updates
   }
 
   Future<void> _loadCustomMarker() async {
@@ -73,7 +77,7 @@ class _DriverPageState extends State<DriverPage> {
       List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
       Placemark place = placemarks[0];
       setState(() {
-        _address = "${place.thoroughfare}, ${place.locality}, ${place.administrativeArea}, ${place.country}";
+        _address = "${place.street ?? 'Unknown Street'}, ${place.locality ?? 'Unknown Locality'}, ${place.administrativeArea ?? 'Unknown Area'}, ${place.country ?? 'Unknown Country'}";
       });
     } catch (e) {
       setState(() {
@@ -123,11 +127,7 @@ class _DriverPageState extends State<DriverPage> {
       myLocationEnabled: true,
       myLocationButtonEnabled: true,
       markers: {
-        Marker(
-          markerId: MarkerId('currentLocation'),
-          position: _initialPosition,
-          icon: customIcon ?? BitmapDescriptor.defaultMarker,
-        ),
+        if (_currentLocationMarker != null) _currentLocationMarker!,
       },
     );
   }
@@ -209,6 +209,29 @@ class _DriverPageState extends State<DriverPage> {
       duration: Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
+  }
+
+  void _startLocationUpdates() {
+    _positionStreamSubscription = Geolocator.getPositionStream(
+      // Use the correct parameters based on the latest Geolocator API
+    ).listen((Position position) {
+      setState(() {
+        _initialPosition = LatLng(position.latitude, position.longitude);
+        _currentLocationMarker = Marker(
+          markerId: MarkerId('currentLocation'),
+          position: _initialPosition,
+          icon: customIcon ?? BitmapDescriptor.defaultMarker,
+        );
+        _mapController?.animateCamera(CameraUpdate.newLatLng(_initialPosition));
+        _getAddressFromLatLng(position);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _positionStreamSubscription.cancel(); // Cancel location updates when not needed
+    super.dispose();
   }
 
   @override
@@ -294,7 +317,7 @@ class _DriverPageState extends State<DriverPage> {
                                   ),
                                 ],
                               ),
-                              SizedBox(height: 20),
+                              SizedBox(height: 10),
                               // Navigation Bar for "For Pick Up" and "Seats"
                               Container(
                                 color: Colors.blue,
@@ -359,7 +382,7 @@ class _DriverPageState extends State<DriverPage> {
             },
           ),
           Positioned(
-            top: 40,
+            top: 80,
             right: 10,
             child: FloatingActionButton(
               onPressed: () {},
@@ -381,7 +404,7 @@ class _DriverPageState extends State<DriverPage> {
                   ),
                   const PopupMenuItem<MapType>(
                     value: MapType.hybrid,
-                    child: Text('Hybrid'),
+                    child: Text('Hybrid'), //
                   ),
                 ],
               ),

@@ -6,7 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:firebase_database/firebase_database.dart'; // Import Firebase Realtime Database
+import 'package:firebase_database/firebase_database.dart';
 
 class PassengerPage extends StatefulWidget {
   @override
@@ -20,7 +20,7 @@ class _PassengerPageState extends State<PassengerPage> {
   String? currentAddress;
   late GoogleMapController mapController;
   BitmapDescriptor? customIcon;
-  int _selectedIndex = 0; // State variable for BottomNavigationBar
+  int _selectedIndex = 0;
   List<bool> _seatSelected = List.generate(25, (index) => false);
   final DatabaseReference _databaseRef = FirebaseDatabase.instance.ref().child('Seats');
 
@@ -37,7 +37,7 @@ class _PassengerPageState extends State<PassengerPage> {
     }).catchError((error) {
       print('Error retrieving user data: $error');
     });
-    _loadSeatData(); // Load initial seat data from Firebase
+    _loadSeatData();
   }
 
   Future<void> _loadCustomMarker() async {
@@ -82,7 +82,7 @@ class _PassengerPageState extends State<PassengerPage> {
       print('Error getting address: $e');
     }
   }
-  //fetch recent Location
+
   Future<void> _refreshLocation() async {
     await _getCurrentLocation();
   }
@@ -103,7 +103,7 @@ class _PassengerPageState extends State<PassengerPage> {
       if (data != null) {
         setState(() {
           _seatSelected = List.generate(25, (index) => data['Seat${index + 1}'] ?? false);
-          print('Seats updated: $_seatSelected'); // Debug statement
+          print('Seats updated: $_seatSelected');
         });
       }
     });
@@ -141,19 +141,19 @@ class _PassengerPageState extends State<PassengerPage> {
           SizedBox(height: 20),
           _buildSeatRow([0], "Driver"),
           SizedBox(height: 20),
-          _buildSeatRow([1, 2, null, null,3]),
+          _buildSeatRow([1, 2, null, null, 3]),
           SizedBox(height: 20),
-          _buildSeatRow([4, 5, null,null, 6]),
+          _buildSeatRow([4, 5, null, null, 6]),
           SizedBox(height: 20),
           _buildSeatRow([7, 8, null, null, null, null]),
           SizedBox(height: 20),
-          _buildSeatRow([9, 10, null,null, 11]),
+          _buildSeatRow([9, 10, null, null, 11]),
           SizedBox(height: 20),
-          _buildSeatRow([12, 13, null,null, 14]),
+          _buildSeatRow([12, 13, null, null, 14]),
           SizedBox(height: 20),
-          _buildSeatRow([15, 16, null,null, 17]),
+          _buildSeatRow([15, 16, null, null, 17]),
           SizedBox(height: 20),
-          _buildSeatRow([18, 19, null,null, 20]),
+          _buildSeatRow([18, 19, null, null, 20]),
           SizedBox(height: 20),
           _buildSeatRow([21, 22, 23, 24]),
         ],
@@ -172,22 +172,22 @@ class _PassengerPageState extends State<PassengerPage> {
           ),
         ...seatIndices.map((index) {
           if (index == null || index >= _seatSelected.length) {
-            return SizedBox(width: 30); // Adjust spacing as necessary
+            return SizedBox(width: 30);
           } else {
             return Padding(
               padding: const EdgeInsets.all(4.0),
               child: Container(
-                width: 50, // Adjust width as necessary
-                height: 50, // Adjust height as necessary
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
-                  color: _seatSelected[index] ? Colors.green : Colors.grey, // Color based on seat status
-                  borderRadius: BorderRadius.circular(8), // Rounded corners
+                  color: _seatSelected[index] ? Colors.green : Colors.grey,
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Center(
                   child: Text(
                     "Seat ${index + 1}",
                     style: TextStyle(
-                      color: Colors.white, // Text color
+                      color: Colors.white,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -200,59 +200,111 @@ class _PassengerPageState extends State<PassengerPage> {
     );
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Colors.blue,
+              ),
+              child: Text(
+                'Passenger Information',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.map),
+              title: Text('Map'),
+              onTap: () {
+                Navigator.pop(context);
+                _onItemTapped(0);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.event_seat),
+              title: Text('Seats'),
+              onTap: () {
+                Navigator.pop(context);
+                _onItemTapped(1);
+              },
+            ),
+          ],
+        ),
+      ),
       appBar: AppBar(
         title: Text('Passenger Page'),
       ),
-      body: _selectedIndex == 0
-          ? passengerSnapshot != null
-          ? SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Welcome!',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blueAccent,
+      body: Stack(
+        children: [
+          _buildMap(),
+          DraggableScrollableSheet(
+            initialChildSize: 0.4,
+            minChildSize: 0.3,
+            maxChildSize: 0.7,
+            builder: (BuildContext context) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
                 ),
-              ),
-              _buildFullNameRow(
-                passengerSnapshot!['firstName'],
-                passengerSnapshot!['middleName'],
-                passengerSnapshot!['lastName'],
-              ),
-              _buildAddressRow(passengerSnapshot!['address']),
-              _buildDetailRow('Passenger Type', passengerSnapshot!['passengerType']),
-              _buildLocationRow(),
-              _buildMapContainer(),
-            ],
-          ),
-        ),
-      )
-          : Center(child: CircularProgressIndicator())
-          : _buildSeats(), // Seat reservation view
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.map),
-            label: 'Map',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.event_seat),
-            label: 'Seats',
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: _selectedIndex == 0 && passengerSnapshot != null
+                          ? SingleChildScrollView(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              'Welcome!',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blueAccent,
+                              ),
+                            ),
+                            _buildFullNameRow(
+                              passengerSnapshot!['firstName'],
+                              passengerSnapshot!['middleName'],
+                              passengerSnapshot!['lastName'],
+                            ),
+                            _buildAddressRow(passengerSnapshot!['address']),
+                            _buildDetailRow('Passenger Type', passengerSnapshot!['passengerType']),
+                            _buildLocationRow(),
+                          ],
+                        ),
+                      )
+                          : _buildSeats(),
+                    ),
+                    BottomNavigationBar(
+                      items: const <BottomNavigationBarItem>[
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.map),
+                          label: 'Map',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.event_seat),
+                          label: 'Seats',
+                        ),
+                      ],
+                      currentIndex: _selectedIndex,
+                      selectedItemColor: Colors.blue,
+                      onTap: _onItemTapped,
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.blue,
-        onTap: _onItemTapped,
       ),
     );
   }
@@ -379,25 +431,6 @@ class _PassengerPageState extends State<PassengerPage> {
                 ],
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMapContainer() {
-    return Container(
-      height: 300,
-      child: Stack(
-        children: [
-          _buildMap(),
-          Positioned(
-            bottom: 10,
-            right: 10,
-            child: FloatingActionButton(
-              onPressed: _refreshLocation,
-              child: Icon(Icons.my_location),
-            ),
-          ),
         ],
       ),
     );

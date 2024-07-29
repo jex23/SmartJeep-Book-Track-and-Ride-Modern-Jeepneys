@@ -15,7 +15,7 @@ class _DriverPageState extends State<DriverPage> {
   String _address = "Fetching address...";
   GoogleMapController? _mapController;
   LatLng _initialPosition = LatLng(0, 0);
-  MapType _currentMapType = MapType.satellite;
+  MapType _currentMapType = MapType.hybrid;
   BitmapDescriptor? customIcon;
   Marker? _currentLocationMarker;
 

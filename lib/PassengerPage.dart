@@ -244,67 +244,64 @@ class _PassengerPageState extends State<PassengerPage> {
       body: Stack(
         children: [
           _buildMap(),
-          DraggableScrollableSheet(
-            initialChildSize: 0.4,
-            minChildSize: 0.3,
-            maxChildSize: 0.7,
-            builder: (BuildContext context) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                ),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: _selectedIndex == 0 && passengerSnapshot != null
-                          ? SingleChildScrollView(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              'Welcome!',
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blueAccent,
-                              ),
+          if (_selectedIndex == 0 && passengerSnapshot != null)
+            DraggableScrollableSheet(
+              initialChildSize: 0.3,
+              minChildSize: 0.2,
+              maxChildSize: 0.6,
+              builder: (BuildContext context, ScrollController scrollController) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                  ),
+                  child: SingleChildScrollView(
+                    controller: scrollController,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            'Welcome!',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueAccent,
                             ),
-                            _buildFullNameRow(
-                              passengerSnapshot!['firstName'],
-                              passengerSnapshot!['middleName'],
-                              passengerSnapshot!['lastName'],
-                            ),
-                            _buildAddressRow(passengerSnapshot!['address']),
-                            _buildDetailRow('Passenger Type', passengerSnapshot!['passengerType']),
-                            _buildLocationRow(),
-                          ],
-                        ),
-                      )
-                          : _buildSeats(),
+                          ),
+                          _buildFullNameRow(
+                            passengerSnapshot!['firstName'],
+                            passengerSnapshot!['middleName'],
+                            passengerSnapshot!['lastName'],
+                          ),
+                          _buildAddressRow(passengerSnapshot!['address']),
+                          _buildDetailRow('Passenger Type', passengerSnapshot!['passengerType']),
+                          _buildLocationRow(),
+                        ],
+                      ),
                     ),
-                    BottomNavigationBar(
-                      items: const <BottomNavigationBarItem>[
-                        BottomNavigationBarItem(
-                          icon: Icon(Icons.map),
-                          label: 'Map',
-                        ),
-                        BottomNavigationBarItem(
-                          icon: Icon(Icons.event_seat),
-                          label: 'Seats',
-                        ),
-                      ],
-                      currentIndex: _selectedIndex,
-                      selectedItemColor: Colors.blue,
-                      onTap: _onItemTapped,
-                    ),
-                  ],
-                ),
-              );
-            },
+                  ),
+                );
+              },
+            ),
+          if (_selectedIndex == 1) _buildSeats(),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.map),
+            label: 'Map',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.event_seat),
+            label: 'Seats',
           ),
         ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: Colors.blue,
+        onTap: _onItemTapped,
       ),
     );
   }

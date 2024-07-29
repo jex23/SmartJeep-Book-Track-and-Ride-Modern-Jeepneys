@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'PassengerLoginPage.dart'; // Ensure this file exists and is correctly imported
 
 class PassengerPage extends StatefulWidget {
   @override
@@ -23,6 +24,9 @@ class _PassengerPageState extends State<PassengerPage> {
   int _selectedIndex = 0;
   List<bool> _seatSelected = List.generate(25, (index) => false);
   final DatabaseReference _databaseRef = FirebaseDatabase.instance.ref().child('Seats');
+  MapType _currentMapType = MapType.normal; // Track map type
+  StreamSubscription<Position>? _positionStreamSubscription; // Stream subscription for location updates
+  Set<Marker> _markers = {}; // Set of markers for the map
 
   @override
   void initState() {
@@ -40,17 +44,23 @@ class _PassengerPageState extends State<PassengerPage> {
     _loadSeatData();
   }
 
+  @override
+  void dispose() {
+    _positionStreamSubscription?.cancel(); // Cancel the stream subscription when the widget is disposed
+    super.dispose();
+  }
+
   Future<void> _loadCustomMarker() async {
     customIcon = await BitmapDescriptor.fromAssetImage(
       ImageConfiguration(size: Size(1, 1)),
-      'Imagess/bus2.png',
+      'Imagess/bus2.png', // Ensure this path is correct
     );
   }
 
   Future<void> _requestLocationPermission() async {
     PermissionStatus status = await Permission.location.request();
     if (status.isGranted) {
-      _getCurrentLocation();
+      _startLocationUpdates();
     } else if (status.isDenied) {
       print('Location permission denied');
     } else if (status.isPermanentlyDenied) {
@@ -59,15 +69,34 @@ class _PassengerPageState extends State<PassengerPage> {
     }
   }
 
-  Future<void> _getCurrentLocation() async {
-    try {
-      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      setState(() {
-        currentPosition = position;
-      });
-      _getAddressFromLatLng(position);
-    } catch (e) {
-      print('Error getting location: $e');
+  void _startLocationUpdates() {
+    _positionStreamSubscription = Geolocator.getPositionStream(
+      // Optionally use Geolocator.getPositionStream() with named parameters if supported
+      // Geolocator.getPositionStream(desiredAccuracy: LocationAccuracy.high, distanceFilter: 10)
+    ).listen((Position position) {
+      _updateLocation(position);
+    });
+  }
+
+  Future<void> _updateLocation(Position position) async {
+    setState(() {
+      currentPosition = position;
+      _markers = {
+        Marker(
+          markerId: MarkerId('currentLocation'),
+          position: LatLng(position.latitude, position.longitude),
+          icon: customIcon ?? BitmapDescriptor.defaultMarker,
+        ),
+      };
+    });
+    _getAddressFromLatLng(position);
+
+    if (mapController != null) {
+      mapController.animateCamera(
+        CameraUpdate.newLatLng(
+          LatLng(position.latitude, position.longitude),
+        ),
+      );
     }
   }
 
@@ -84,7 +113,9 @@ class _PassengerPageState extends State<PassengerPage> {
   }
 
   Future<void> _refreshLocation() async {
-    await _getCurrentLocation();
+    if (currentPosition != null) {
+      await _updateLocation(currentPosition!);
+    }
   }
 
   void _onMapCreated(GoogleMapController controller) {
@@ -109,6 +140,47 @@ class _PassengerPageState extends State<PassengerPage> {
     });
   }
 
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Logout'),
+          content: Text('Are you sure you want to logout?'),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+              },
+            ),
+            TextButton(
+              child: Text('Logout'),
+              onPressed: () async {
+                // Clear any necessary data or state here
+
+                Navigator.of(context).pop(); // Close the dialog
+
+                // Navigate to PassengerLoginPage and clear the navigation stack
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => PassengerLoginPage()), // Changed to PassengerLoginPage
+                      (route) => false,
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _onMapTypeChanged(MapType mapType) {
+    setState(() {
+      _currentMapType = mapType;
+    });
+  }
+
   Widget _buildMap() {
     return currentPosition != null
         ? GoogleMap(
@@ -117,13 +189,8 @@ class _PassengerPageState extends State<PassengerPage> {
         target: LatLng(currentPosition!.latitude, currentPosition!.longitude),
         zoom: 15.0,
       ),
-      markers: {
-        Marker(
-          markerId: MarkerId('currentLocation'),
-          position: LatLng(currentPosition!.latitude, currentPosition!.longitude),
-          icon: customIcon ?? BitmapDescriptor.defaultMarker,
-        ),
-      },
+      mapType: _currentMapType,
+      markers: _markers, // Use the updated markers set
       myLocationEnabled: true,
       myLocationButtonEnabled: true,
       zoomControlsEnabled: true,
@@ -202,21 +269,16 @@ class _PassengerPageState extends State<PassengerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final passengerSnapshot = this.passengerSnapshot; // To use in the build method
+
     return Scaffold(
       drawer: Drawer(
         child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
+          children: <Widget>[
             DrawerHeader(
+              child: Text('Passenger Menu'),
               decoration: BoxDecoration(
                 color: Colors.blue,
-              ),
-              child: Text(
-                'Passenger Information',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                ),
               ),
             ),
             ListTile(
@@ -235,24 +297,56 @@ class _PassengerPageState extends State<PassengerPage> {
                 _onItemTapped(1);
               },
             ),
+            ListTile(
+              leading: Icon(Icons.logout),
+              title: Text('Logout'),
+              onTap: () {
+                Navigator.pop(context);
+                _showLogoutDialog();
+              },
+            ),
           ],
         ),
       ),
       appBar: AppBar(
         title: Text('Passenger Page'),
+        actions: <Widget>[
+          PopupMenuButton<MapType>(
+            icon: Icon(Icons.map),
+            onSelected: _onMapTypeChanged,
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<MapType>>[
+              const PopupMenuItem<MapType>(
+                value: MapType.normal,
+                child: Text('Normal'),
+              ),
+              const PopupMenuItem<MapType>(
+                value: MapType.satellite,
+                child: Text('Satellite'),
+              ),
+              const PopupMenuItem<MapType>(
+                value: MapType.terrain,
+                child: Text('Terrain'),
+              ),
+              const PopupMenuItem<MapType>(
+                value: MapType.hybrid,
+                child: Text('Hybrid'),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Stack(
         children: [
           _buildMap(),
           DraggableScrollableSheet(
             initialChildSize: 0.7,
-            minChildSize: 0.3,
+            minChildSize: 0.1,
             maxChildSize: 1.0,
             builder: (BuildContext context, ScrollController scrollController) {
               return Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
                 ),
                 child: SingleChildScrollView(
                   controller: scrollController,
@@ -313,63 +407,43 @@ class _PassengerPageState extends State<PassengerPage> {
   }
 
   Widget _buildFullNameRow(String firstName, String middleName, String lastName) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              '$firstName $middleName $lastName',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[700],
-              ),
-            ),
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        Icon(Icons.person, color: Colors.blueAccent),
+        SizedBox(width: 8),
+        Text(
+          '$firstName ${middleName.isNotEmpty ? middleName + ' ' : ''}$lastName',
+          style: TextStyle(fontSize: 18),
+        ),
+      ],
     );
   }
 
   Widget _buildAddressRow(String address) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              address,
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[700],
-              ),
-            ),
+    return Row(
+      children: [
+        Icon(Icons.location_on, color: Colors.blueAccent),
+        SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            address,
+            style: TextStyle(fontSize: 18),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(String title, String detail) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         children: [
+          Icon(Icons.info, color: Colors.blueAccent),
+          SizedBox(width: 8),
           Text(
-            '$label: ',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[700],
-              ),
-            ),
+            '$title: $detail',
+            style: TextStyle(fontSize: 18),
           ),
         ],
       ),
@@ -377,65 +451,21 @@ class _PassengerPageState extends State<PassengerPage> {
   }
 
   Widget _buildLocationRow() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Current Coordinates: ',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              Expanded(
-                child: currentPosition != null
-                    ? Text(
-                  'Latitude: ${currentPosition!.latitude}, Longitude: ${currentPosition!.longitude}',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.grey[700],
-                  ),
-                )
-                    : Text(
-                  'Fetching location...',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.grey[700],
-                  ),
-                ),
-              ),
-            ],
+    return Row(
+      children: [
+        Icon(Icons.location_searching, color: Colors.blueAccent),
+        SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            currentAddress ?? 'Fetching location...',
+            style: TextStyle(fontSize: 18),
           ),
-          if (currentAddress != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0),
-              child: Row(
-                children: [
-                  Text(
-                    'Address: ',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      currentAddress!,
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
+        ),
+        IconButton(
+          icon: Icon(Icons.refresh),
+          onPressed: _refreshLocation,
+        ),
+      ],
     );
   }
 }

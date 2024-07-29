@@ -5,6 +5,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart'; // Import Firebase Realtime Database
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
+import 'DriverLoginPage.dart';
 
 class DriverPage extends StatefulWidget {
   @override
@@ -28,16 +30,33 @@ class _DriverPageState extends State<DriverPage> {
   bool _showSeats = false;
   bool _isExpanded = false;
   late StreamSubscription<Position> _positionStreamSubscription;
+  bool _isDarkMode = false; // Variable to track dark mode status
 
   final DraggableScrollableController _draggableController = DraggableScrollableController();
 
   @override
   void initState() {
     super.initState();
+    _loadTheme(); // Load the saved theme from SharedPreferences
     _checkPermissions();
     _loadSeatData(); // Load initial seat data from Firebase
     _loadCustomMarker();
     _startLocationUpdates(); // Start location updates
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isDarkMode = prefs.getBool('darkMode') ?? false; // Default to false if not set
+    });
+  }
+
+  Future<void> _toggleTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isDarkMode = !_isDarkMode;
+      prefs.setBool('darkMode', _isDarkMode);
+    });
   }
 
   Future<void> _loadCustomMarker() async {
@@ -118,7 +137,7 @@ class _DriverPageState extends State<DriverPage> {
     return GoogleMap(
       initialCameraPosition: CameraPosition(
         target: _initialPosition,
-        zoom: 14.0,
+        zoom: 16.0,
       ),
       mapType: _currentMapType,
       onMapCreated: (GoogleMapController controller) {
@@ -136,7 +155,36 @@ class _DriverPageState extends State<DriverPage> {
     return SingleChildScrollView(
       child: Column(
         children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                height: 5,
+                width: 100,
+                margin: EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ],
+          ),
           Text("Driver Seat", style: TextStyle(fontSize: 18)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(width: 10),
+              Text(
+                'Available Seats: $availableSeats',
+                style: TextStyle(fontSize: 16),
+              ),
+              SizedBox(width: 10),
+              Text(
+                'Occupied Seats: $occupiedSeats',
+                style: TextStyle(fontSize: 16),
+              ),
+            ],
+          ),
           SizedBox(height: 10),
           _buildSeatRow([0], "Driver"),
           SizedBox(height: 20),
@@ -239,179 +287,260 @@ class _DriverPageState extends State<DriverPage> {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final safeAreaBottom = MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          _buildMap(),
-          DraggableScrollableSheet(
-            initialChildSize: 0.3,
-            minChildSize: 0.2,
-            maxChildSize: 0.6,
-            controller: _draggableController,
-            builder: (BuildContext context, ScrollController scrollController) {
-              return GestureDetector(
-                onVerticalDragUpdate: (details) {
-                  // Allow the sheet to be dragged up and down
-                },
-                onTap: () {
-                  setState(() {
-                    _isExpanded = !_isExpanded;
-                    _draggableController.animateTo(
-                      _isExpanded ? 0.6 : 0.3,
-                      duration: Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  });
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 10,
-                        spreadRadius: 5,
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        height: 5,
-                        width: 40,
-                        margin: EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.grey,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            left: 16.0,
-                            right: 16.0,
-                            bottom: safeAreaBottom + 8.0,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _address,
-                                style: TextStyle(fontSize: 18),
-                              ),
-                              SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  Text(
-                                    'Available Seats: $availableSeats',
-                                    style: TextStyle(fontSize: 16),
-                                  ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'Occupied Seats: $occupiedSeats',
-                                    style: TextStyle(fontSize: 16),
-                                  ),
-                                ],
-                              ),
-                              SizedBox(height: 10),
-                              // Navigation Bar for "For Pick Up" and "Seats"
-                              Container(
-                                color: Colors.blue,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                  children: [
-                                    Expanded(
-                                      child: TextButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            _showSeats = false; // Hide seats when "For Pick Up" is clicked
-                                          });
-                                          _expandSheet(); // Ensure the sheet is fully extended
-                                        },
-                                        child: Text(
-                                          'For Pick Up',
-                                          style: TextStyle(color: Colors.white),
-                                        ),
-                                      ),
-                                    ),
-                                    Container(
-                                      height: 24,
-                                      width: 1,
-                                      color: Colors.white,
-                                    ),
-                                    Expanded(
-                                      child: TextButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            _showSeats = true; // Show seats when "Seats" is clicked
-                                          });
-                                          _expandSheet(); // Ensure the sheet is fully extended
-                                        },
-                                        child: Text(
-                                          'Seats',
-                                          style: TextStyle(color: Colors.white),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(top: 8.0),
-                                  child: ListView(
-                                    controller: scrollController,
-                                    children: [
-                                      _showSeats ? _buildSeats() : Container(),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          Positioned(
-            top: 80,
-            right: 10,
-            child: FloatingActionButton(
-              onPressed: () {},
-              child: PopupMenuButton<MapType>(
-                icon: Icon(Icons.map),
-                onSelected: _onMapTypeChanged,
-                itemBuilder: (BuildContext context) => <PopupMenuEntry<MapType>>[
-                  const PopupMenuItem<MapType>(
-                    value: MapType.normal,
-                    child: Text('Normal'),
-                  ),
-                  const PopupMenuItem<MapType>(
-                    value: MapType.satellite,
-                    child: Text('Satellite'),
-                  ),
-                  const PopupMenuItem<MapType>(
-                    value: MapType.terrain,
-                    child: Text('Terrain'),
-                  ),
-                  const PopupMenuItem<MapType>(
-                    value: MapType.hybrid,
-                    child: Text('Hybrid'), //
-                  ),
-                ],
-              ),
+    return MaterialApp(
+      theme: _isDarkMode ? ThemeData.dark() : ThemeData.light(),
+      home: Scaffold(
+        appBar: AppBar(
+          title: Text('Driver Page'),
+          leading: Builder(
+            builder: (context) => IconButton(
+              icon: Icon(Icons.menu),
+              onPressed: () {
+                Scaffold.of(context).openDrawer();
+              },
             ),
           ),
-        ],
+          actions: <Widget>[
+            PopupMenuButton<MapType>(
+              icon: Icon(Icons.map),
+              onSelected: _onMapTypeChanged,
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<MapType>>[
+                const PopupMenuItem<MapType>(
+                  value: MapType.normal,
+                  child: Text('Normal'),
+                ),
+                const PopupMenuItem<MapType>(
+                  value: MapType.satellite,
+                  child: Text('Satellite'),
+                ),
+                const PopupMenuItem<MapType>(
+                  value: MapType.terrain,
+                  child: Text('Terrain'),
+                ),
+                const PopupMenuItem<MapType>(
+                  value: MapType.hybrid,
+                  child: Text('Hybrid'),
+                ),
+              ],
+            ),
+            IconButton(
+              icon: Icon(Icons.brightness_6),
+              onPressed: () {
+                _toggleTheme(); // Toggle dark mode
+              },
+            ),
+          ],
+        ),
+        drawer: Drawer(
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: <Widget>[
+              DrawerHeader(
+                decoration: BoxDecoration(
+                  color: Colors.blue,
+                ),
+                child: Text(
+                  'Driver Menu',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.logout, color: Colors.blue), // Add the logout icon
+                title: Text('Logout'),
+                onTap: () {
+                  // Add your logout logic here
+                  Navigator.pop(context); // Close the drawer
+                  _showLogoutDialog();
+                },
+              ),
+            ],
+          ),
+        ),
+        body: Stack(
+          children: [
+            _buildMap(),
+            DraggableScrollableSheet(
+              initialChildSize: 0.3,
+              minChildSize: 0.2,
+              maxChildSize: 0.6,
+              controller: _draggableController,
+              builder: (BuildContext context, ScrollController scrollController) {
+                return GestureDetector(
+                  onVerticalDragUpdate: (details) {
+                    // Allow the sheet to be dragged up and down
+                  },
+                  onTap: () {
+                    setState(() {
+                      _isExpanded = !_isExpanded;
+                      _draggableController.animateTo(
+                        _isExpanded ? 0.6 : 0.3,
+                        duration: Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    });
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 10,
+                          spreadRadius: 5,
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              left: 16.0,
+                              right: 16.0,
+                              bottom: safeAreaBottom + 8.0,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(top: 8.0),
+                                    child: ListView(
+                                      controller: scrollController,
+                                      children: [
+                                        if (_showSeats) _buildSeats() else Container(),
+                                        if (!_showSeats) _buildForPickUp() // Add this line to show "For Pick Up" content
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _showSeats ? 1 : 0,
+          onTap: (index) {
+            setState(() {
+              _showSeats = index == 1; // Show seats if index is 1
+              _expandSheet(); // Ensure the sheet is fully extended
+            });
+          },
+          items: [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.assignment_turned_in),
+              label: 'For Pick Up',
+              backgroundColor: Colors.blue,
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.event_seat),
+              label: 'Seats',
+              backgroundColor: Colors.blue,
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildForPickUp() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              height: 5,
+              width: 100,
+              margin: EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.grey,
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 10),
+        Text(
+          'Current Address:',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        SizedBox(height: 10),
+        Text(
+          _address,
+          style: TextStyle(fontSize: 16),
+        ),
+        SizedBox(height: 10),
+        Text(
+          'For Pick Up:',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        Row(
+          children: [
+            SizedBox(width: 10),
+            Text(
+              'Available Seats: $availableSeats',
+              style: TextStyle(fontSize: 16),
+            ),
+            SizedBox(width: 10),
+            Text(
+              'Occupied Seats: $occupiedSeats',
+              style: TextStyle(fontSize: 16),
+            ),
+          ],
+        )
+      ],
+    );
+  }
+
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Logout'),
+          content: Text('Are you sure you want to logout?'),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+              },
+            ),
+            TextButton(
+              child: Text('Logout'),
+              onPressed: () async {
+                // Clear any necessary data or state here
+
+                Navigator.of(context).pop(); // Close the dialog
+
+                // Navigate to DriverLoginPage and clear the navigation stack
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => DriverLoginPage()),
+                      (route) => false,
+                );
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 }

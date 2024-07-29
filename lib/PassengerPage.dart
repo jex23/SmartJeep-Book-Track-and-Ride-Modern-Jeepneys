@@ -244,48 +244,54 @@ class _PassengerPageState extends State<PassengerPage> {
       body: Stack(
         children: [
           _buildMap(),
-          if (_selectedIndex == 0 && passengerSnapshot != null)
-            DraggableScrollableSheet(
-              initialChildSize: 0.3,
-              minChildSize: 0.2,
-              maxChildSize: 0.6,
-              builder: (BuildContext context, ScrollController scrollController) {
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                  ),
-                  child: SingleChildScrollView(
-                    controller: scrollController,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            'Welcome!',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blueAccent,
-                            ),
+          DraggableScrollableSheet(
+            initialChildSize: 0.7,
+            minChildSize: 0.3,
+            maxChildSize: 1.0,
+            builder: (BuildContext context, ScrollController scrollController) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                ),
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      if (_selectedIndex == 0 && passengerSnapshot != null) ...[
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                'Welcome!',
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blueAccent,
+                                ),
+                              ),
+                              _buildFullNameRow(
+                                passengerSnapshot!['firstName'],
+                                passengerSnapshot!['middleName'],
+                                passengerSnapshot!['lastName'],
+                              ),
+                              _buildAddressRow(passengerSnapshot!['address']),
+                              _buildDetailRow('Passenger Type', passengerSnapshot!['passengerType']),
+                              _buildLocationRow(),
+                            ],
                           ),
-                          _buildFullNameRow(
-                            passengerSnapshot!['firstName'],
-                            passengerSnapshot!['middleName'],
-                            passengerSnapshot!['lastName'],
-                          ),
-                          _buildAddressRow(passengerSnapshot!['address']),
-                          _buildDetailRow('Passenger Type', passengerSnapshot!['passengerType']),
-                          _buildLocationRow(),
-                        ],
-                      ),
-                    ),
+                        ),
+                      ],
+                      if (_selectedIndex == 1) _buildSeats(),
+                    ],
                   ),
-                );
-              },
-            ),
-          if (_selectedIndex == 1) _buildSeats(),
+                ),
+              );
+            },
+          ),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(

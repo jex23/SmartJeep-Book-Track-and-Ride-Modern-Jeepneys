@@ -33,6 +33,8 @@ class _PassengerPageState extends State<PassengerPage> {
   double _busLatitude = 0.0; // Bus latitude
   double _busLongitude = 0.0; // Bus longitude
   bool _shouldFollowUser = true; // Flag to control camera movement
+  bool _shouldFollowBus = true; // Flag to control map following bus location
+
 
   @override
   void initState() {
@@ -191,7 +193,18 @@ class _PassengerPageState extends State<PassengerPage> {
         ),
       };
     });
+
+    // Center the map on the bus location only if _shouldFollowBus is true
+    if (_shouldFollowBus && mapController != null) {
+      mapController.animateCamera(
+        CameraUpdate.newLatLng(
+          LatLng(latitude, longitude),
+        ),
+      );
+    }
   }
+
+
 
   Future<void> _getBusAddressFromLatLng(double latitude, double longitude) async {
     try {
@@ -248,7 +261,8 @@ class _PassengerPageState extends State<PassengerPage> {
 
   void _onLocationOptionSelected(String value) {
     if (value == 'user') {
-      _shouldFollowUser = true;
+      _shouldFollowBus = false;
+      _shouldFollowUser = true; // Ensure user location is followed if selected
       if (currentPosition != null && mapController != null) {
         mapController.animateCamera(
           CameraUpdate.newLatLng(
@@ -257,7 +271,8 @@ class _PassengerPageState extends State<PassengerPage> {
         );
       }
     } else if (value == 'bus') {
-      _shouldFollowUser = false;
+      _shouldFollowBus = true;
+      _shouldFollowUser = false; // Stop following user location if bus location is selected
       if (_busLatitude != 0.0 && _busLongitude != 0.0 && mapController != null) {
         mapController.animateCamera(
           CameraUpdate.newLatLng(
@@ -267,6 +282,7 @@ class _PassengerPageState extends State<PassengerPage> {
       }
     }
   }
+
 
   Widget _buildMap() {
     return GoogleMap(
@@ -288,13 +304,14 @@ class _PassengerPageState extends State<PassengerPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Passenger Page'),
+        title: Text('Passenger'),
         actions: [
           IconButton(
             icon: Icon(Icons.logout),
             onPressed: _showLogoutDialog,
           ),
           PopupMenuButton<String>(
+            icon: Icon(Icons.location_searching),
             onSelected: _onLocationOptionSelected,
             itemBuilder: (BuildContext context) {
               return [
@@ -310,6 +327,7 @@ class _PassengerPageState extends State<PassengerPage> {
             },
           ),
           PopupMenuButton<MapType>(
+            icon: Icon(Icons.map),
             onSelected: _onMapTypeChanged,
             itemBuilder: (BuildContext context) {
               return [

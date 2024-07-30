@@ -359,6 +359,21 @@ class _PassengerPageState extends State<PassengerPage> {
               ),
             ],
           ),
+          PopupMenuButton<MapType>(
+            icon: Icon(Icons.location_searching),
+            onSelected: _onMapTypeChanged,
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<MapType>>[
+              const PopupMenuItem<MapType>(
+                value: MapType.normal,
+                child: Text('User Location'),
+              ),
+              const PopupMenuItem<MapType>(
+                value: MapType.satellite,
+                child: Text('Bus Location'),
+              ),
+            ],
+          ),
+          SizedBox(width: 10,)
         ],
       ),
       body: Stack(

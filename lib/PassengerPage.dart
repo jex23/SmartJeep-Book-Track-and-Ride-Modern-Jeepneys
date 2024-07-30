@@ -22,6 +22,7 @@ class _PassengerPageState extends State<PassengerPage> {
   String? busAddress;
   late GoogleMapController mapController;
   BitmapDescriptor? customIcon;
+  BitmapDescriptor? busIcon; // Added for bus icon
   int _selectedIndex = 0;
   List<bool> _seatSelected = List.generate(25, (index) => false);
   final DatabaseReference _databaseRef = FirebaseDatabase.instance.ref().child('Seats');
@@ -29,12 +30,16 @@ class _PassengerPageState extends State<PassengerPage> {
   MapType _currentMapType = MapType.normal; // Track map type
   StreamSubscription<Position>? _positionStreamSubscription; // Stream subscription for location updates
   Set<Marker> _markers = {}; // Set of markers for the map
+  double _busLatitude = 0.0; // Bus latitude
+  double _busLongitude = 0.0; // Bus longitude
+  bool _shouldFollowUser = true; // Flag to control camera movement
 
   @override
   void initState() {
     super.initState();
     _requestLocationPermission();
     _loadCustomMarker();
+    _loadBusIcon(); // Load bus icon
     currentUser = FirebaseAuth.instance.currentUser!;
     FirebaseFirestore.instance.collection('passengers').doc(currentUser.uid).get().then((snapshot) {
       setState(() {
@@ -55,6 +60,13 @@ class _PassengerPageState extends State<PassengerPage> {
 
   Future<void> _loadCustomMarker() async {
     customIcon = await BitmapDescriptor.fromAssetImage(
+      ImageConfiguration(size: Size(1, 1)),
+      'Imagess/bus2.png', // Ensure this path is correct
+    );
+  }
+
+  Future<void> _loadBusIcon() async {
+    busIcon = await BitmapDescriptor.fromAssetImage(
       ImageConfiguration(size: Size(1, 1)),
       'Imagess/bus2.png', // Ensure this path is correct
     );
@@ -90,11 +102,17 @@ class _PassengerPageState extends State<PassengerPage> {
           position: LatLng(position.latitude, position.longitude),
           icon: customIcon ?? BitmapDescriptor.defaultMarker,
         ),
+        if (_busLatitude != 0.0 && _busLongitude != 0.0)
+          Marker(
+            markerId: MarkerId('busLocation'),
+            position: LatLng(_busLatitude, _busLongitude),
+            icon: busIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          ),
       };
     });
     _getAddressFromLatLng(position);
 
-    if (mapController != null) {
+    if (_shouldFollowUser && mapController != null) {
       mapController.animateCamera(
         CameraUpdate.newLatLng(
           LatLng(position.latitude, position.longitude),
@@ -149,8 +167,29 @@ class _PassengerPageState extends State<PassengerPage> {
       if (data != null) {
         double latitude = data['latitude'];
         double longitude = data['longitude'];
+        _updateBusLocation(latitude, longitude);
         _getBusAddressFromLatLng(latitude, longitude);
       }
+    });
+  }
+
+  void _updateBusLocation(double latitude, double longitude) {
+    setState(() {
+      _busLatitude = latitude;
+      _busLongitude = longitude;
+      _markers = {
+        if (currentPosition != null)
+          Marker(
+            markerId: MarkerId('currentLocation'),
+            position: LatLng(currentPosition!.latitude, currentPosition!.longitude),
+            icon: customIcon ?? BitmapDescriptor.defaultMarker,
+          ),
+        Marker(
+          markerId: MarkerId('busLocation'),
+          position: LatLng(latitude, longitude),
+          icon: busIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        ),
+      };
     });
   }
 
@@ -207,23 +246,250 @@ class _PassengerPageState extends State<PassengerPage> {
     });
   }
 
+  void _onLocationOptionSelected(String value) {
+    if (value == 'user') {
+      _shouldFollowUser = true;
+      if (currentPosition != null && mapController != null) {
+        mapController.animateCamera(
+          CameraUpdate.newLatLng(
+            LatLng(currentPosition!.latitude, currentPosition!.longitude),
+          ),
+        );
+      }
+    } else if (value == 'bus') {
+      _shouldFollowUser = false;
+      if (_busLatitude != 0.0 && _busLongitude != 0.0 && mapController != null) {
+        mapController.animateCamera(
+          CameraUpdate.newLatLng(
+            LatLng(_busLatitude, _busLongitude),
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildMap() {
-    return currentPosition != null
-        ? GoogleMap(
+    return GoogleMap(
       onMapCreated: _onMapCreated,
+      markers: _markers,
       initialCameraPosition: CameraPosition(
-        target: LatLng(currentPosition!.latitude, currentPosition!.longitude),
-        zoom: 15.0,
+        target: currentPosition != null
+            ? LatLng(currentPosition!.latitude, currentPosition!.longitude)
+            : LatLng(0, 0),
+        zoom: 14.0,
       ),
       mapType: _currentMapType,
-      markers: _markers, // Use the updated markers set
-      myLocationEnabled: true,
-      myLocationButtonEnabled: true,
-      zoomControlsEnabled: true,
-      zoomGesturesEnabled: true,
-      scrollGesturesEnabled: true,
-    )
-        : Center(child: CircularProgressIndicator());
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final passengerSnapshot = this.passengerSnapshot; // To use in the build method
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Passenger Page'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.logout),
+            onPressed: _showLogoutDialog,
+          ),
+          PopupMenuButton<String>(
+            onSelected: _onLocationOptionSelected,
+            itemBuilder: (BuildContext context) {
+              return [
+                PopupMenuItem<String>(
+                  value: 'user',
+                  child: Text('User Location'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'bus',
+                  child: Text('Bus Location'),
+                ),
+              ];
+            },
+          ),
+          PopupMenuButton<MapType>(
+            onSelected: _onMapTypeChanged,
+            itemBuilder: (BuildContext context) {
+              return [
+                PopupMenuItem<MapType>(
+                  value: MapType.normal,
+                  child: Text('Normal'),
+                ),
+                PopupMenuItem<MapType>(
+                  value: MapType.satellite,
+                  child: Text('Satellite'),
+                ),
+                PopupMenuItem<MapType>(
+                  value: MapType.hybrid,
+                  child: Text('Hybrid'),
+                ),
+                PopupMenuItem<MapType>(
+                  value: MapType.terrain,
+                  child: Text('Terrain'),
+                ),
+              ];
+            },
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          _buildMap(),
+          DraggableScrollableSheet(
+            initialChildSize: 0.7,
+            minChildSize: 0.1,
+            maxChildSize: 1.0,
+            builder: (BuildContext context, ScrollController scrollController) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      if (_selectedIndex == 0 && passengerSnapshot != null) ...[
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                'Welcome!',
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blueAccent,
+                                ),
+                              ),
+                              _buildFullNameRow(
+                                passengerSnapshot!['firstName'],
+                                passengerSnapshot!['middleName'],
+                                passengerSnapshot!['lastName'],
+                              ),
+                              _buildAddressRow(passengerSnapshot!['address']),
+                              _buildDetailRow('Passenger Type', passengerSnapshot!['passengerType']),
+                              _buildLocationRow(),
+                              _buildBusLocationRow(),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (_selectedIndex == 1) _buildSeats(),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.info),
+            label: 'Details',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.event_seat),
+            label: 'Seats',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: Colors.blueAccent,
+        onTap: _onItemTapped,
+      ),
+    );
+  }
+
+  Widget _buildFullNameRow(String firstName, String middleName, String lastName) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.person, color: Colors.blueAccent),
+          SizedBox(width: 8),
+          Text(
+            '$firstName $middleName $lastName',
+            style: TextStyle(fontSize: 18),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddressRow(String address) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.location_on, color: Colors.blueAccent),
+          SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              address,
+              style: TextStyle(fontSize: 18),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String title, String detail) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.info, color: Colors.blueAccent),
+          SizedBox(width: 8),
+          Text(
+            '$title: $detail',
+            style: TextStyle(fontSize: 18),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.my_location, color: Colors.blueAccent),
+          SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              currentAddress ?? 'Loading...',
+              style: TextStyle(fontSize: 18),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBusLocationRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.directions_bus, color: Colors.blueAccent),
+          SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              busAddress ?? 'Loading...',
+              style: TextStyle(fontSize: 18),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildSeats() {
@@ -293,236 +559,5 @@ class _PassengerPageState extends State<PassengerPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final passengerSnapshot = this.passengerSnapshot; // To use in the build method
 
-    return Scaffold(
-      drawer: Drawer(
-        child: ListView(
-          children: <Widget>[
-            DrawerHeader(
-              child: Text('Passenger Menu'),
-              decoration: BoxDecoration(
-                color: Colors.blue,
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.map),
-              title: Text('Map'),
-              onTap: () {
-                Navigator.pop(context);
-                _onItemTapped(0);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.event_seat),
-              title: Text('Seats'),
-              onTap: () {
-                Navigator.pop(context);
-                _onItemTapped(1);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.logout),
-              title: Text('Logout'),
-              onTap: () {
-                Navigator.pop(context);
-                _showLogoutDialog();
-              },
-            ),
-          ],
-        ),
-      ),
-      appBar: AppBar(
-        title: Text('Passenger Page'),
-        actions: <Widget>[
-          PopupMenuButton<MapType>(
-            icon: Icon(Icons.map),
-            onSelected: _onMapTypeChanged,
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<MapType>>[
-              const PopupMenuItem<MapType>(
-                value: MapType.normal,
-                child: Text('Normal'),
-              ),
-              const PopupMenuItem<MapType>(
-                value: MapType.satellite,
-                child: Text('Satellite'),
-              ),
-              const PopupMenuItem<MapType>(
-                value: MapType.terrain,
-                child: Text('Terrain'),
-              ),
-              const PopupMenuItem<MapType>(
-                value: MapType.hybrid,
-                child: Text('Hybrid'),
-              ),
-            ],
-          ),
-          PopupMenuButton<MapType>(
-            icon: Icon(Icons.location_searching),
-            onSelected: _onMapTypeChanged,
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<MapType>>[
-              const PopupMenuItem<MapType>(
-                value: MapType.normal,
-                child: Text('User Location'),
-              ),
-              const PopupMenuItem<MapType>(
-                value: MapType.satellite,
-                child: Text('Bus Location'),
-              ),
-            ],
-          ),
-          SizedBox(width: 10,)
-        ],
-      ),
-      body: Stack(
-        children: [
-          _buildMap(),
-          DraggableScrollableSheet(
-            initialChildSize: 0.7,
-            minChildSize: 0.1,
-            maxChildSize: 1.0,
-            builder: (BuildContext context, ScrollController scrollController) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                ),
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      if (_selectedIndex == 0 && passengerSnapshot != null) ...[
-                        Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                'Welcome!',
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blueAccent,
-                                ),
-                              ),
-                              _buildFullNameRow(
-                                passengerSnapshot!['firstName'],
-                                passengerSnapshot!['middleName'],
-                                passengerSnapshot!['lastName'],
-                              ),
-                              _buildAddressRow(passengerSnapshot!['address']),
-                              _buildDetailRow('Passenger Type', passengerSnapshot!['passengerType']),
-                              _buildLocationRow(),
-                              _buildBusLocationRow(),
-                            ],
-                          ),
-                        ),
-                      ],
-                      if (_selectedIndex == 1) _buildSeats(),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.map),
-            label: 'Map',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.event_seat),
-            label: 'Seats',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.blue,
-        onTap: _onItemTapped,
-      ),
-    );
-  }
-
-  Widget _buildFullNameRow(String firstName, String middleName, String lastName) {
-    return Row(
-      children: [
-        Icon(Icons.person, color: Colors.blueAccent),
-        SizedBox(width: 8),
-        Text(
-          '$firstName ${middleName.isNotEmpty ? middleName + ' ' : ''}$lastName',
-          style: TextStyle(fontSize: 18),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAddressRow(String address) {
-    return Row(
-      children: [
-        Icon(Icons.location_on, color: Colors.blueAccent),
-        SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            address,
-            style: TextStyle(fontSize: 18),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDetailRow(String title, String detail) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          Icon(Icons.info, color: Colors.blueAccent),
-          SizedBox(width: 8),
-          Text(
-            '$title: $detail',
-            style: TextStyle(fontSize: 18),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLocationRow() {
-    return Row(
-      children: [
-        Icon(Icons.location_searching, color: Colors.blueAccent),
-        SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            currentAddress ?? 'Fetching location...',
-            style: TextStyle(fontSize: 18),
-          ),
-        ),
-        IconButton(
-          icon: Icon(Icons.refresh),
-          onPressed: _refreshLocation,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBusLocationRow() {
-    return Row(
-      children: [
-        Icon(Icons.directions_bus, color: Colors.blueAccent),
-        SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            busAddress ?? 'Fetching bus location...',
-            style: TextStyle(fontSize: 18),
-          ),
-        ),
-      ],
-    );
-  }
 }

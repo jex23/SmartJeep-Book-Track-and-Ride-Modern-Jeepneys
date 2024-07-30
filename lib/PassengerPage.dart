@@ -19,11 +19,13 @@ class _PassengerPageState extends State<PassengerPage> {
   DocumentSnapshot? passengerSnapshot;
   Position? currentPosition;
   String? currentAddress;
+  String? busAddress;
   late GoogleMapController mapController;
   BitmapDescriptor? customIcon;
   int _selectedIndex = 0;
   List<bool> _seatSelected = List.generate(25, (index) => false);
   final DatabaseReference _databaseRef = FirebaseDatabase.instance.ref().child('Seats');
+  final DatabaseReference _busLocationRef = FirebaseDatabase.instance.ref().child('Bus/Location');
   MapType _currentMapType = MapType.normal; // Track map type
   StreamSubscription<Position>? _positionStreamSubscription; // Stream subscription for location updates
   Set<Marker> _markers = {}; // Set of markers for the map
@@ -42,6 +44,7 @@ class _PassengerPageState extends State<PassengerPage> {
       print('Error retrieving user data: $error');
     });
     _loadSeatData();
+    _loadBusLocation();
   }
 
   @override
@@ -138,6 +141,29 @@ class _PassengerPageState extends State<PassengerPage> {
         });
       }
     });
+  }
+
+  Future<void> _loadBusLocation() async {
+    _busLocationRef.onValue.listen((DatabaseEvent event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (data != null) {
+        double latitude = data['latitude'];
+        double longitude = data['longitude'];
+        _getBusAddressFromLatLng(latitude, longitude);
+      }
+    });
+  }
+
+  Future<void> _getBusAddressFromLatLng(double latitude, double longitude) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(latitude, longitude);
+      Placemark place = placemarks[0];
+      setState(() {
+        busAddress = "${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}";
+      });
+    } catch (e) {
+      print('Error getting bus address: $e');
+    }
   }
 
   void _showLogoutDialog() {
@@ -375,6 +401,7 @@ class _PassengerPageState extends State<PassengerPage> {
                               _buildAddressRow(passengerSnapshot!['address']),
                               _buildDetailRow('Passenger Type', passengerSnapshot!['passengerType']),
                               _buildLocationRow(),
+                              _buildBusLocationRow(),
                             ],
                           ),
                         ),
@@ -464,6 +491,21 @@ class _PassengerPageState extends State<PassengerPage> {
         IconButton(
           icon: Icon(Icons.refresh),
           onPressed: _refreshLocation,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBusLocationRow() {
+    return Row(
+      children: [
+        Icon(Icons.directions_bus, color: Colors.blueAccent),
+        SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            busAddress ?? 'Fetching bus location...',
+            style: TextStyle(fontSize: 18),
+          ),
         ),
       ],
     );

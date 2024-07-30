@@ -273,6 +273,12 @@ class _DriverPageState extends State<DriverPage> {
         _mapController?.animateCamera(CameraUpdate.newLatLng(_initialPosition));
         _getAddressFromLatLng(position);
       });
+
+      // Send the coordinates to Firebase Realtime Database
+      FirebaseDatabase.instance.ref().child('Bus/Location').set({
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+      });
     });
   }
 

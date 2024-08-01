@@ -25,15 +25,19 @@ class _PassengerPageState extends State<PassengerPage> {
   BitmapDescriptor? busIcon; // Added for bus icon
   int _selectedIndex = 0;
   List<bool> _seatSelected = List.generate(25, (index) => false);
-  final DatabaseReference _databaseRef = FirebaseDatabase.instance.ref().child('Seats');
-  final DatabaseReference _busLocationRef = FirebaseDatabase.instance.ref().child('Bus/Location');
+  final DatabaseReference _databaseRef =
+      FirebaseDatabase.instance.ref().child('Seats');
+  final DatabaseReference _busLocationRef =
+      FirebaseDatabase.instance.ref().child('Bus/Location');
   MapType _currentMapType = MapType.normal; // Track map type
-  StreamSubscription<Position>? _positionStreamSubscription; // Stream subscription for location updates
+  StreamSubscription<Position>?
+      _positionStreamSubscription; // Stream subscription for location updates
   Set<Marker> _markers = {}; // Set of markers for the map
   double _busLatitude = 0.0; // Bus latitude
   double _busLongitude = 0.0; // Bus longitude
   bool _shouldFollowUser = true; // Flag to control camera movement
   bool _shouldFollowBus = true; // Flag to control map following bus location
+  bool _isClicked = false;
 
 
   @override
@@ -43,7 +47,11 @@ class _PassengerPageState extends State<PassengerPage> {
     _loadCustomMarker();
     _loadBusIcon(); // Load bus icon
     currentUser = FirebaseAuth.instance.currentUser!;
-    FirebaseFirestore.instance.collection('passengers').doc(currentUser.uid).get().then((snapshot) {
+    FirebaseFirestore.instance
+        .collection('passengers')
+        .doc(currentUser.uid)
+        .get()
+        .then((snapshot) {
       setState(() {
         passengerSnapshot = snapshot;
       });
@@ -52,18 +60,20 @@ class _PassengerPageState extends State<PassengerPage> {
     });
     _loadSeatData();
     _loadBusLocation();
+    _listenToPickMeUpStatus(); // Add this line
   }
 
   @override
   void dispose() {
-    _positionStreamSubscription?.cancel(); // Cancel the stream subscription when the widget is disposed
+    _positionStreamSubscription
+        ?.cancel(); // Cancel the stream subscription when the widget is disposed
     super.dispose();
   }
 
   Future<void> _loadCustomMarker() async {
     customIcon = await BitmapDescriptor.fromAssetImage(
       ImageConfiguration(size: Size(1, 1)),
-      'Imagess/bus2.png', // Ensure this path is correct
+      'Imagess/arm-up.png', // Ensure this path is correct
     );
   }
 
@@ -73,6 +83,51 @@ class _PassengerPageState extends State<PassengerPage> {
       'Imagess/bus2.png', // Ensure this path is correct
     );
   }
+
+  void _listenToPickMeUpStatus() {
+    FirebaseFirestore.instance
+        .collection('Pick_Me_Up')
+        .where('fullName', isEqualTo:
+    '${passengerSnapshot?['firstName']} ${passengerSnapshot?['middleName']} ${passengerSnapshot?['lastName']}')
+        .where('status', isEqualTo: 'waiting')
+        .snapshots()
+        .listen((snapshot) {
+      if (snapshot.docs.isEmpty) {
+        setState(() {
+          _isClicked = false; // Reset button state when status changes to declined or is removed
+        });
+      }
+    });
+  }
+
+  void _toggleButton() {
+    setState(() {
+      if (_isClicked) {
+        _cancelRequest();
+      } else {
+        _sendPickMeUpRequest();
+      }
+      _isClicked = !_isClicked;
+    });
+  }
+
+  Future<void> _sendPickMeUpRequest() async {
+    if (currentPosition != null && passengerSnapshot != null) {
+      try {
+        await FirebaseFirestore.instance.collection('Pick_Me_Up').add({
+          'coordinates': GeoPoint(currentPosition!.latitude, currentPosition!.longitude),
+          'fullName': '${passengerSnapshot!['firstName']} ${passengerSnapshot!['middleName']} ${passengerSnapshot!['lastName']}',
+          'passengerType': passengerSnapshot!['passengerType'],
+          'status': 'waiting', // Added status field
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+        print('Pick Me Up request sent successfully');
+      } catch (error) {
+        print('Failed to send Pick Me Up request: $error');
+      }
+    }
+  }
+
 
   Future<void> _requestLocationPermission() async {
     PermissionStatus status = await Permission.location.request();
@@ -88,9 +143,10 @@ class _PassengerPageState extends State<PassengerPage> {
 
   void _startLocationUpdates() {
     _positionStreamSubscription = Geolocator.getPositionStream(
-      // Optionally use Geolocator.getPositionStream() with named parameters if supported
-      // Geolocator.getPositionStream(desiredAccuracy: LocationAccuracy.high, distanceFilter: 10)
-    ).listen((Position position) {
+            // Optionally use Geolocator.getPositionStream() with named parameters if supported
+            // Geolocator.getPositionStream(desiredAccuracy: LocationAccuracy.high, distanceFilter: 10)
+            )
+        .listen((Position position) {
       _updateLocation(position);
     });
   }
@@ -108,7 +164,8 @@ class _PassengerPageState extends State<PassengerPage> {
           Marker(
             markerId: MarkerId('busLocation'),
             position: LatLng(_busLatitude, _busLongitude),
-            icon: busIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            icon: busIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
           ),
       };
     });
@@ -125,10 +182,12 @@ class _PassengerPageState extends State<PassengerPage> {
 
   Future<void> _getAddressFromLatLng(Position position) async {
     try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+      List<Placemark> placemarks =
+          await placemarkFromCoordinates(position.latitude, position.longitude);
       Placemark place = placemarks[0];
       setState(() {
-        currentAddress = "${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}";
+        currentAddress =
+            "${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}";
       });
     } catch (e) {
       print('Error getting address: $e');
@@ -156,7 +215,8 @@ class _PassengerPageState extends State<PassengerPage> {
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
       if (data != null) {
         setState(() {
-          _seatSelected = List.generate(25, (index) => data['Seat${index + 1}'] ?? false);
+          _seatSelected =
+              List.generate(25, (index) => data['Seat${index + 1}'] ?? false);
           print('Seats updated: $_seatSelected');
         });
       }
@@ -175,6 +235,33 @@ class _PassengerPageState extends State<PassengerPage> {
     });
   }
 
+  Future<void> _cancelRequest() async {
+    if (currentPosition != null && passengerSnapshot != null) {
+      try {
+        final query = FirebaseFirestore.instance
+            .collection('Pick_Me_Up')
+            .where('fullName', isEqualTo:
+        '${passengerSnapshot!['firstName']} ${passengerSnapshot!['middleName']} ${passengerSnapshot!['lastName']}')
+            .where('status', isEqualTo: 'waiting');
+
+        final snapshot = await query.get();
+
+        for (var doc in snapshot.docs) {
+          await FirebaseFirestore.instance
+              .collection('Pick_Me_Up')
+              .doc(doc.id)
+              .delete();
+        }
+
+        print('Pick Me Up request canceled successfully');
+      } catch (error) {
+        print('Failed to cancel Pick Me Up request: $error');
+      }
+    }
+  }
+
+
+
   void _updateBusLocation(double latitude, double longitude) {
     setState(() {
       _busLatitude = latitude;
@@ -183,13 +270,15 @@ class _PassengerPageState extends State<PassengerPage> {
         if (currentPosition != null)
           Marker(
             markerId: MarkerId('currentLocation'),
-            position: LatLng(currentPosition!.latitude, currentPosition!.longitude),
+            position:
+                LatLng(currentPosition!.latitude, currentPosition!.longitude),
             icon: customIcon ?? BitmapDescriptor.defaultMarker,
           ),
         Marker(
           markerId: MarkerId('busLocation'),
           position: LatLng(latitude, longitude),
-          icon: busIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          icon: busIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         ),
       };
     });
@@ -204,14 +293,15 @@ class _PassengerPageState extends State<PassengerPage> {
     }
   }
 
-
-
-  Future<void> _getBusAddressFromLatLng(double latitude, double longitude) async {
+  Future<void> _getBusAddressFromLatLng(
+      double latitude, double longitude) async {
     try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(latitude, longitude);
+      List<Placemark> placemarks =
+          await placemarkFromCoordinates(latitude, longitude);
       Placemark place = placemarks[0];
       setState(() {
-        busAddress = "${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}";
+        busAddress =
+            "${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}";
       });
     } catch (e) {
       print('Error getting bus address: $e');
@@ -242,8 +332,9 @@ class _PassengerPageState extends State<PassengerPage> {
                 // Navigate to PassengerLoginPage and clear the navigation stack
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (context) => PassengerLoginPage()), // Changed to PassengerLoginPage
-                      (route) => false,
+                  MaterialPageRoute(builder: (context) => PassengerLoginPage()),
+                  // Changed to PassengerLoginPage
+                  (route) => false,
                 );
               },
             ),
@@ -272,8 +363,11 @@ class _PassengerPageState extends State<PassengerPage> {
       }
     } else if (value == 'bus') {
       _shouldFollowBus = true;
-      _shouldFollowUser = false; // Stop following user location if bus location is selected
-      if (_busLatitude != 0.0 && _busLongitude != 0.0 && mapController != null) {
+      _shouldFollowUser =
+          false; // Stop following user location if bus location is selected
+      if (_busLatitude != 0.0 &&
+          _busLongitude != 0.0 &&
+          mapController != null) {
         mapController.animateCamera(
           CameraUpdate.newLatLng(
             LatLng(_busLatitude, _busLongitude),
@@ -282,7 +376,6 @@ class _PassengerPageState extends State<PassengerPage> {
       }
     }
   }
-
 
   Widget _buildMap() {
     return GoogleMap(
@@ -300,7 +393,8 @@ class _PassengerPageState extends State<PassengerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final passengerSnapshot = this.passengerSnapshot; // To use in the build method
+    final passengerSnapshot =
+        this.passengerSnapshot; // To use in the build method
 
     return Scaffold(
       appBar: AppBar(
@@ -362,7 +456,7 @@ class _PassengerPageState extends State<PassengerPage> {
             builder: (BuildContext context, ScrollController scrollController) {
               return Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Color.fromARGB(255, 255, 255, 255),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
                 ),
                 child: SingleChildScrollView(
@@ -390,9 +484,44 @@ class _PassengerPageState extends State<PassengerPage> {
                                 passengerSnapshot!['lastName'],
                               ),
                               _buildAddressRow(passengerSnapshot!['address']),
-                              _buildDetailRow('Passenger Type', passengerSnapshot!['passengerType']),
+                              _buildDetailRow('Passenger Type',
+                                  passengerSnapshot!['passengerType']),
                               _buildLocationRow(),
                               _buildBusLocationRow(),
+                              Center(
+                                child: Text(
+                                  _isClicked ? 'Status: Waiting to be Picked' : 'Click to be Pick Up',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isClicked ? Colors.green : Colors.black, // Change text color if needed
+                                  ),
+                                ),
+                              ),
+                              Center(
+                                child: ElevatedButton(
+
+                                  onPressed: _toggleButton,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _isClicked
+                                        ? Colors.green
+                                        : Colors.white, // Background color
+                                    foregroundColor: _isClicked
+                                        ? Colors.white
+                                        : Colors.green, // Text color
+                                    side: BorderSide(
+                                      color: Colors.green, // Outline color
+                                      width: 2.0, // Outline width
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8.0),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _isClicked ? 'Cancel' : 'Pick Me Up',),
+
+                                ),
+                              )
                             ],
                           ),
                         ),
@@ -424,7 +553,8 @@ class _PassengerPageState extends State<PassengerPage> {
     );
   }
 
-  Widget _buildFullNameRow(String firstName, String middleName, String lastName) {
+  Widget _buildFullNameRow(
+      String firstName, String middleName, String lastName) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
@@ -514,7 +644,8 @@ class _PassengerPageState extends State<PassengerPage> {
     return Center(
       child: Column(
         children: [
-          Text("Seat Reservation", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          Text("Seat Reservation",
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           SizedBox(height: 20),
           _buildSeatRow([0], "Driver"),
           SizedBox(height: 20),
@@ -576,6 +707,4 @@ class _PassengerPageState extends State<PassengerPage> {
       ],
     );
   }
-
-
 }

@@ -32,12 +32,16 @@ class _PassengerPageState extends State<PassengerPage> {
   MapType _currentMapType = MapType.normal; // Track map type
   StreamSubscription<Position>?
       _positionStreamSubscription; // Stream subscription for location updates
+  StreamSubscription<QuerySnapshot>? _pickMeUpStreamSubscription; // Correctly declared
   Set<Marker> _markers = {}; // Set of markers for the map
   double _busLatitude = 0.0; // Bus latitude
   double _busLongitude = 0.0; // Bus longitude
   bool _shouldFollowUser = true; // Flag to control camera movement
   bool _shouldFollowBus = true; // Flag to control map following bus location
   bool _isClicked = false;
+  String _pickMeUpStatus = 'Unknown'; // Initialize with a default value
+
+
 
 
   @override
@@ -55,20 +59,22 @@ class _PassengerPageState extends State<PassengerPage> {
       setState(() {
         passengerSnapshot = snapshot;
       });
+      _startListeningForPickMeUpStatus(); // Start listening for real-time updates
     }).catchError((error) {
       print('Error retrieving user data: $error');
     });
     _loadSeatData();
     _loadBusLocation();
-    _listenToPickMeUpStatus(); // Add this line
   }
+
 
   @override
   void dispose() {
-    _positionStreamSubscription
-        ?.cancel(); // Cancel the stream subscription when the widget is disposed
+    _pickMeUpStreamSubscription?.cancel(); // Cancel the stream subscription
+    _positionStreamSubscription?.cancel(); // Also cancel location updates
     super.dispose();
   }
+
 
   Future<void> _loadCustomMarker() async {
     customIcon = await BitmapDescriptor.fromAssetImage(
@@ -84,21 +90,77 @@ class _PassengerPageState extends State<PassengerPage> {
     );
   }
 
-  void _listenToPickMeUpStatus() {
-    FirebaseFirestore.instance
+  Future<void> _getPickMeUpStatus() async {
+    if (currentUser != null) {
+      try {
+        final query = FirebaseFirestore.instance
+            .collection('Pick_Me_Up')
+            .where('fullName', isEqualTo:
+        '${passengerSnapshot!['firstName']} ${passengerSnapshot!['middleName']} ${passengerSnapshot!['lastName']}')
+            .where('status', isEqualTo: 'waiting');
+
+        final snapshot = await query.get();
+
+        if (snapshot.docs.isNotEmpty) {
+          final doc = snapshot.docs.first;
+          setState(() {
+            _pickMeUpStatus = doc['status'] ?? 'Unknown'; // Retrieve the status field
+          });
+        } else {
+          setState(() {
+            _pickMeUpStatus = 'No request found'; // Handle case where no document matches
+          });
+        }
+      } catch (error) {
+        print('Failed to get Pick Me Up status: $error');
+      }
+    }
+  }
+
+  void _startListeningForPickMeUpStatus() {
+    final query = FirebaseFirestore.instance
         .collection('Pick_Me_Up')
         .where('fullName', isEqualTo:
-    '${passengerSnapshot?['firstName']} ${passengerSnapshot?['middleName']} ${passengerSnapshot?['lastName']}')
-        .where('status', isEqualTo: 'waiting')
-        .snapshots()
-        .listen((snapshot) {
-      if (snapshot.docs.isEmpty) {
+    '${passengerSnapshot!['firstName']} ${passengerSnapshot!['middleName']} ${passengerSnapshot!['lastName']}');
+
+    _pickMeUpStreamSubscription = query.snapshots().listen((QuerySnapshot snapshot) {
+      if (snapshot.docs.isNotEmpty) {
+        final doc = snapshot.docs.first;
+        final status = doc['status'] ?? 'Unknown';
+
         setState(() {
-          _isClicked = false; // Reset button state when status changes to declined or is removed
+          _pickMeUpStatus = status;
+
+          // Toggle the button if the status is 'Declined'
+          if (status == 'Declined') {
+            _isClicked = false; // Set the button to 'Pick Me Up' state
+            _deletePickMeUpRequest(doc.id); // Call the delete method
+          }
+        });
+      } else {
+        setState(() {
+          _pickMeUpStatus = 'No request found';
+          _isClicked = false; // Reset button if no request is found
         });
       }
     });
   }
+
+  Future<void> _deletePickMeUpRequest(String documentId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('Pick_Me_Up')
+          .doc(documentId)
+          .delete();
+      print('Pick Me Up request deleted successfully');
+    } catch (error) {
+      print('Failed to delete Pick Me Up request: $error');
+    }
+  }
+
+
+
+
 
   void _toggleButton() {
     setState(() {
@@ -490,7 +552,7 @@ class _PassengerPageState extends State<PassengerPage> {
                               _buildBusLocationRow(),
                               Center(
                                 child: Text(
-                                  _isClicked ? 'Status: Waiting to be Picked' : 'Click to be Pick Up',
+                                  _isClicked ? '' : 'Click to be Pick Up',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
@@ -521,7 +583,17 @@ class _PassengerPageState extends State<PassengerPage> {
                                     _isClicked ? 'Cancel' : 'Pick Me Up',),
 
                                 ),
-                              )
+                              ),
+                              Center(
+                                child: Text(
+                                  'Status: $_pickMeUpStatus',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),

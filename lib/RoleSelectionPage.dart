@@ -3,6 +3,7 @@ import 'DriverLoginPage.dart';
 import 'PassengerLoginPage.dart';
 import 'PassengerPage.dart';
 import 'Test.dart';
+import 'DriverPage.dart';
 
 class RoleSelectionPage extends StatelessWidget {
   @override
@@ -68,7 +69,7 @@ class RoleSelectionPage extends StatelessWidget {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => PassengerLoginPage()),
+                    MaterialPageRoute(builder: (context) => DriverPage()),
                   );
                 },
                 child: Text(

@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart'; // Import Firebase Realtime Database
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 import 'DriverLoginPage.dart';
 
@@ -50,6 +51,33 @@ class _DriverPageState extends State<DriverPage> {
       _isDarkMode = prefs.getBool('darkMode') ?? false; // Default to false if not set
     });
   }
+
+  /////////////////////////////////////////////////////////////////
+
+  Future<String> _getAddress(double latitude, double longitude) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(latitude, longitude);
+      final place = placemarks[0];
+      return '${place.street}, ${place.subLocality}, ${place.locality}, ${place.administrativeArea}, ${place.country}';
+    } catch (e) {
+      print("Error getting address: $e");
+      return "Unknown address";
+    }
+  }
+
+  Future<void> _updateStatus(String documentId, String newStatus) async {
+    try {
+      await FirebaseFirestore.instance.collection('Pick_Me_Up').doc(documentId).update({
+        'status': newStatus,
+      });
+    } catch (e) {
+      print("Error updating status: $e");
+    }
+  }
+
+  ////////////////////////////////////////////////////////////////
+
+
 
   Future<void> _toggleTheme() async {
     final prefs = await SharedPreferences.getInstance();

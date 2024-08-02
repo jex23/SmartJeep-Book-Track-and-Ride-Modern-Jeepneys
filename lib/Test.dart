@@ -23,15 +23,7 @@ class Test extends StatelessWidget {
       print("Error updating status: $e");
     }
   }
-
-  Future<void> _deleteDocument(String documentId) async {
-    try {
-      await FirebaseFirestore.instance.collection('Pick_Me_Up').doc(documentId).delete();
-    } catch (e) {
-      print("Error deleting document: $e");
-    }
-  }
-
+////
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -118,12 +110,6 @@ class Test extends StatelessWidget {
                               _updateStatus(documentId, 'Declined');
                             },
                             child: Text('Decline', style: TextStyle(color: Colors.red)),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              _deleteDocument(documentId);
-                            },
-                            child: Text('Delete', style: TextStyle(color: Colors.red)),
                           ),
                         ],
                       ),

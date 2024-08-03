@@ -4,7 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:firebase_database/firebase_database.dart'; // Import Firebase Realtime Database
+import 'package:firebase_database/firebase_database.dart';// Import Firebase Realtime Database
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 import 'DriverLoginPage.dart';
@@ -34,6 +34,8 @@ class _DriverPageState extends State<DriverPage> {
   bool _isDarkMode = false; // Variable to track dark mode status
 
   final DraggableScrollableController _draggableController = DraggableScrollableController();
+  int _selectedIndex = 0;
+
 
   @override
   void initState() {
@@ -75,9 +77,19 @@ class _DriverPageState extends State<DriverPage> {
     }
   }
 
+  Future<void> _deleteDocument(String documentId) async {
+    try {
+      await FirebaseFirestore.instance.collection('Pick_Me_Up').doc(documentId).delete();
+    } catch (e) {
+      print("Error deleting document: $e");
+    }
+  }
+
   ////////////////////////////////////////////////////////////////
 
 
+
+  ///////////////////////////////////////////////////////////////////
 
   Future<void> _toggleTheme() async {
     final prefs = await SharedPreferences.getInstance();
@@ -175,6 +187,150 @@ class _DriverPageState extends State<DriverPage> {
       myLocationButtonEnabled: true,
       markers: {
         if (_currentLocationMarker != null) _currentLocationMarker!,
+      },
+    );
+  }
+
+  Widget _buildPickUpList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('Pick_Me_Up').snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return Center(child: CircularProgressIndicator());
+        }
+
+        final documents = snapshot.data!.docs;
+
+        return DraggableScrollableSheet(
+          expand: true,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    'For Pick Up',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(width: 10),
+                    Text(
+                      'Available Seats: $availableSeats',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Occupied Seats: $occupiedSeats',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: documents.length,
+                    itemBuilder: (context, index) {
+                      final document = documents[index];
+                      final documentId = document.id;
+                      final fullName = document['fullName'] as String;
+                      final geopoint = document['coordinates'] as GeoPoint;
+                      final passengerType = document['passengerType'] as String;
+                      final status = document['status'] as String;
+                      final timestamp = (document['timestamp'] as Timestamp)
+                          .toDate();
+                      final latitude = geopoint.latitude;
+                      final longitude = geopoint.longitude;
+
+                      return FutureBuilder<String>(
+                        future: _getAddress(latitude, longitude),
+                        builder: (context, addressSnapshot) {
+                          if (!addressSnapshot.hasData) {
+                            return ListTile(
+                              title: Text(fullName),
+                              subtitle: Text('Fetching address...'),
+                              contentPadding: EdgeInsets.all(16),
+                            );
+                          }
+
+                          final address = addressSnapshot.data!;
+
+                          return Card(
+                            elevation: 5,
+                            margin: EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 16),
+                            child: ListTile(
+                              contentPadding: EdgeInsets.all(16),
+                              title: Text(
+                                fullName,
+                                style: TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Passenger Type: $passengerType',
+                                    style: TextStyle(
+                                        fontSize: 16, color: Colors.grey[700]),
+                                  ),
+                                  Text(
+                                    'Status: $status',
+                                    style: TextStyle(
+                                        fontSize: 16, color: Colors.grey[700]),
+                                  ),
+                                  Text(
+                                    'Address: $address',
+                                    style: TextStyle(
+                                        fontSize: 16, color: Colors.grey[700]),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Timestamp: ${timestamp.toLocal()}',
+                                    style: TextStyle(
+                                        fontSize: 16, color: Colors.grey[700]),
+                                  ),
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  TextButton(
+                                    onPressed: () {
+                                      _updateStatus(documentId, 'Accepted');
+                                    },
+                                    child: Text('Accept',
+                                        style: TextStyle(color: Colors.green)),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      _updateStatus(documentId, 'Declined');
+                                    },
+                                    child: Text('Decline',
+                                        style: TextStyle(color: Colors.red)),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      _deleteDocument(documentId);
+                                    },
+                                    child: Text('Delete',
+                                        style: TextStyle(color: Colors.red)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
       },
     );
   }
@@ -492,54 +648,125 @@ class _DriverPageState extends State<DriverPage> {
     );
   }
 
+
+
+
   Widget _buildForPickUp() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              height: 5,
-              width: 100,
-              margin: EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.grey,
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 10),
-        Text(
-          'Current Address:',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        SizedBox(height: 10),
-        Text(
-          _address,
-          style: TextStyle(fontSize: 16),
-        ),
-        SizedBox(height: 10),
-        Text(
-          'For Pick Up:',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        Row(
-          children: [
-            SizedBox(width: 10),
-            Text(
-              'Available Seats: $availableSeats',
-              style: TextStyle(fontSize: 16),
-            ),
-            SizedBox(width: 10),
-            Text(
-              'Occupied Seats: $occupiedSeats',
-              style: TextStyle(fontSize: 16),
-            ),
-          ],
-        )
-      ],
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('Pick_Me_Up').snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return Center(child: CircularProgressIndicator());
+        }
+
+        final documents = snapshot.data!.docs;
+
+        return DraggableScrollableSheet(
+          expand: true,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    'For Pick Up',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: documents.length,
+                    itemBuilder: (context, index) {
+                      final document = documents[index];
+                      final documentId = document.id;
+                      final fullName = document['fullName'] as String;
+                      final geopoint = document['coordinates'] as GeoPoint;
+                      final passengerType = document['passengerType'] as String;
+                      final status = document['status'] as String;
+                      final timestamp = (document['timestamp'] as Timestamp).toDate();
+                      final latitude = geopoint.latitude;
+                      final longitude = geopoint.longitude;
+
+                      return FutureBuilder<String>(
+                        future: _getAddress(latitude, longitude),
+                        builder: (context, addressSnapshot) {
+                          if (!addressSnapshot.hasData) {
+                            return ListTile(
+                              title: Text(fullName),
+                              subtitle: Text('Fetching address...'),
+                              contentPadding: EdgeInsets.all(16),
+                            );
+                          }
+
+                          final address = addressSnapshot.data!;
+
+                          return Card(
+                            elevation: 5,
+                            margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                            child: ListTile(
+                              contentPadding: EdgeInsets.all(16),
+                              title: Text(
+                                fullName,
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Passenger Type: $passengerType',
+                                    style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                                  ),
+                                  Text(
+                                    'Status: $status',
+                                    style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                                  ),
+                                  Text(
+                                    'Address: $address',
+                                    style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Timestamp: ${timestamp.toLocal()}',
+                                    style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                                  ),
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  TextButton(
+                                    onPressed: () {
+                                      _updateStatus(documentId, 'Accepted');
+                                    },
+                                    child: Text('Accept', style: TextStyle(color: Colors.green)),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      _updateStatus(documentId, 'Declined');
+                                    },
+                                    child: Text('Decline', style: TextStyle(color: Colors.red)),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      _deleteDocument(documentId);
+                                    },
+                                    child: Text('Delete', style: TextStyle(color: Colors.red)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 

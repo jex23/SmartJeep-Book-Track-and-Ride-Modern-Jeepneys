@@ -48,7 +48,7 @@ class RoleSelectionPage extends StatelessWidget {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => Test()),
+                    MaterialPageRoute(builder: (context) => DriverLoginPage()),
                   );
                 },
                 child: Text(
@@ -69,7 +69,7 @@ class RoleSelectionPage extends StatelessWidget {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => DriverPage()),
+                    MaterialPageRoute(builder: (context) => PassengerLoginPage()),
                   );
                 },
                 child: Text(

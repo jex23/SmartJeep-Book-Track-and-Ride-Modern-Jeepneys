@@ -9,6 +9,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'PassengerLoginPage.dart'; // Ensure this file exists and is correctly imported
 
+
+
 class PassengerPage extends StatefulWidget {
   @override
   _PassengerPageState createState() => _PassengerPageState();
@@ -25,25 +27,28 @@ class _PassengerPageState extends State<PassengerPage> {
   BitmapDescriptor? busIcon; // Added for bus icon
   int _selectedIndex = 0;
   List<bool> _seatSelected = List.generate(25, (index) => false);
-  final DatabaseReference _databaseRef =
-      FirebaseDatabase.instance.ref().child('Seats');
-  final DatabaseReference _busLocationRef =
-      FirebaseDatabase.instance.ref().child('Bus/Location');
-  MapType _currentMapType = MapType.normal; // Track map type
+  late DatabaseReference _databaseRef = FirebaseDatabase.instance.ref().child('Bulan/Seats');
+  MapType _currentMapType = MapType.hybrid; // Track map type
   StreamSubscription<Position>?
       _positionStreamSubscription; // Stream subscription for location updates
   StreamSubscription<QuerySnapshot>? _pickMeUpStreamSubscription; // Correctly declared
   Set<Marker> _markers = {}; // Set of markers for the map
-  double _busLatitude = 0.0; // Bus latitude
-  double _busLongitude = 0.0; // Bus longitude
   bool _shouldFollowUser = true; // Flag to control camera movement
   bool _shouldFollowBus = true; // Flag to control map following bus location
   bool _isClicked = false;
   String _pickMeUpStatus = 'Unknown'; // Initialize with a default value
-
-
-
-
+  // References for bus locations
+  final DatabaseReference _bulanBusLocationRef =
+  FirebaseDatabase.instance.ref().child('Bus/BulanBus/Location');
+  final DatabaseReference _matnogBusLocationRef =
+  FirebaseDatabase.instance.ref().child('Bus/MatnogBus/Location');
+  String _focusedBus = 'user'; // default to user location
+  String _routeText = 'Pick a Bus to Load Route'; // State variable for the floating text
+  double _bulanBusLatitude = 0.0;
+  double _bulanBusLongitude = 0.0;
+  double _matnogBusLatitude = 0.0;
+  double _matnogBusLongitude = 0.0;
+  late DatabaseReference _activeDatabaseRef;
   @override
   void initState() {
     super.initState();
@@ -64,32 +69,31 @@ class _PassengerPageState extends State<PassengerPage> {
       print('Error retrieving user data: $error');
     });
     _loadSeatData();
-    _loadBusLocation();
+    _loadBusLocations(); // Load bus locations for both buses
+
+    // Set default to User Location
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onLocationOptionSelected('user'); // Ensure user location is selected on initialization
+    });
   }
-
-
   @override
   void dispose() {
     _pickMeUpStreamSubscription?.cancel(); // Cancel the stream subscription
     _positionStreamSubscription?.cancel(); // Also cancel location updates
     super.dispose();
   }
-
-
   Future<void> _loadCustomMarker() async {
     customIcon = await BitmapDescriptor.fromAssetImage(
       ImageConfiguration(size: Size(1, 1)),
       'Imagess/arm-up.png', // Ensure this path is correct
     );
   }
-
   Future<void> _loadBusIcon() async {
     busIcon = await BitmapDescriptor.fromAssetImage(
       ImageConfiguration(size: Size(1, 1)),
       'Imagess/bus2.png', // Ensure this path is correct
     );
   }
-
   Future<void> _getPickMeUpStatus() async {
     if (currentUser != null) {
       try {
@@ -116,7 +120,6 @@ class _PassengerPageState extends State<PassengerPage> {
       }
     }
   }
-
   void _startListeningForPickMeUpStatus() {
     final query = FirebaseFirestore.instance
         .collection('Pick_Me_Up')
@@ -145,7 +148,6 @@ class _PassengerPageState extends State<PassengerPage> {
       }
     });
   }
-
   Future<void> _deletePickMeUpRequest(String documentId) async {
     try {
       await FirebaseFirestore.instance
@@ -157,10 +159,14 @@ class _PassengerPageState extends State<PassengerPage> {
       print('Failed to delete Pick Me Up request: $error');
     }
   }
-
-
-
-
+  // Method to update the database reference path
+  void _updateDatabaseRef(String bus) {
+    setState(() {
+      _databaseRef = FirebaseDatabase.instance.ref().child('$bus/Seats');
+      _activeDatabaseRef = _databaseRef; // Set the active reference
+      _loadSeatData(); // Reload seat data for the newly selected bus
+    });
+  }
 
   void _toggleButton() {
     setState(() {
@@ -172,7 +178,6 @@ class _PassengerPageState extends State<PassengerPage> {
       _isClicked = !_isClicked;
     });
   }
-
   Future<void> _sendPickMeUpRequest() async {
     if (currentPosition != null && passengerSnapshot != null) {
       try {
@@ -189,8 +194,6 @@ class _PassengerPageState extends State<PassengerPage> {
       }
     }
   }
-
-
   Future<void> _requestLocationPermission() async {
     PermissionStatus status = await Permission.location.request();
     if (status.isGranted) {
@@ -202,7 +205,6 @@ class _PassengerPageState extends State<PassengerPage> {
       openAppSettings();
     }
   }
-
   void _startLocationUpdates() {
     _positionStreamSubscription = Geolocator.getPositionStream(
             // Optionally use Geolocator.getPositionStream() with named parameters if supported
@@ -212,25 +214,21 @@ class _PassengerPageState extends State<PassengerPage> {
       _updateLocation(position);
     });
   }
-
   Future<void> _updateLocation(Position position) async {
     setState(() {
       currentPosition = position;
-      _markers = {
+
+      // Update or add the user's current location marker
+      _markers.removeWhere((marker) => marker.markerId.value == 'currentLocation');
+      _markers.add(
         Marker(
           markerId: MarkerId('currentLocation'),
           position: LatLng(position.latitude, position.longitude),
           icon: customIcon ?? BitmapDescriptor.defaultMarker,
         ),
-        if (_busLatitude != 0.0 && _busLongitude != 0.0)
-          Marker(
-            markerId: MarkerId('busLocation'),
-            position: LatLng(_busLatitude, _busLongitude),
-            icon: busIcon ??
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-          ),
-      };
+      );
     });
+
     _getAddressFromLatLng(position);
 
     if (_shouldFollowUser && mapController != null) {
@@ -241,7 +239,6 @@ class _PassengerPageState extends State<PassengerPage> {
       );
     }
   }
-
   Future<void> _getAddressFromLatLng(Position position) async {
     try {
       List<Placemark> placemarks =
@@ -255,48 +252,125 @@ class _PassengerPageState extends State<PassengerPage> {
       print('Error getting address: $e');
     }
   }
-
   Future<void> _refreshLocation() async {
     if (currentPosition != null) {
       await _updateLocation(currentPosition!);
     }
   }
-
   void _onMapCreated(GoogleMapController controller) {
     mapController = controller;
   }
-
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
   }
-
   Future<void> _loadSeatData() async {
     _databaseRef.onValue.listen((DatabaseEvent event) {
-      final data = event.snapshot.value as Map<dynamic, dynamic>?;
-      if (data != null) {
-        setState(() {
-          _seatSelected =
-              List.generate(25, (index) => data['Seat${index + 1}'] ?? false);
-          print('Seats updated: $_seatSelected');
-        });
+      if (_databaseRef == _activeDatabaseRef) { // Check if the reference is active
+        final data = event.snapshot.value as Map<dynamic, dynamic>?;
+        if (data != null) {
+          setState(() {
+            _seatSelected =
+                List.generate(25, (index) => data['Seat${index + 1}'] ?? false);
+            print('Seats updated: $_seatSelected');
+          });
+        }
       }
     });
   }
-
-  Future<void> _loadBusLocation() async {
-    _busLocationRef.onValue.listen((DatabaseEvent event) {
+  Future<void> _loadBusLocations() async {
+    _loadBulanBusLocation(); // Start listening for Bulan Bus updates
+    _loadMatnogBusLocation(); // Start listening for Matnog Bus updates
+  }
+  void _loadBulanBusLocation() {
+    _bulanBusLocationRef.onValue.listen((DatabaseEvent event) async {
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
       if (data != null) {
-        double latitude = data['latitude'];
-        double longitude = data['longitude'];
-        _updateBusLocation(latitude, longitude);
-        _getBusAddressFromLatLng(latitude, longitude);
+        _bulanBusLatitude = data['latitude'];
+        _bulanBusLongitude = data['longitude'];
+        _updateBulanBusLocation(_bulanBusLatitude, _bulanBusLongitude);
+
+        if (_focusedBus == 'bulanBus') {
+          _getBusAddressFromLatLng(_bulanBusLatitude, _bulanBusLongitude, 'Bulan');
+          // Load the route text from Firebase for Bulan Bus
+          // _routeText = (await FirebaseDatabase.instance.ref().child('/Bus/BulanBus/Route').get()).value.toString();
+          // _updateDatabaseRef('Matnog'); // Update the seats reference to Matnog when Matnog bus is clicked
+        }
+
+        if (_shouldFollowBus) {
+          _followBusMovement(_bulanBusLatitude, _bulanBusLongitude);
+        }
       }
     });
   }
+  void _loadMatnogBusLocation() {
+    _matnogBusLocationRef.onValue.listen((DatabaseEvent event) async {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (data != null) {
+        _matnogBusLatitude = data['latitude'];
+        _matnogBusLongitude = data['longitude'];
+        _updateMatnogBusLocation(_matnogBusLatitude, _matnogBusLongitude);
 
+        if (_focusedBus == 'matnogBus') {
+          _getBusAddressFromLatLng(_matnogBusLatitude, _matnogBusLongitude, 'Matnog');
+          // Load the route text from Firebase for Matnog Bus
+          // _routeText = (await FirebaseDatabase.instance.ref().child('/Bus/MatnogBus/Route').get()).value.toString();
+        }
+
+        if (_shouldFollowBus) {
+          _followBusMovement(_matnogBusLatitude, _matnogBusLongitude);
+        }
+      }
+    });
+  }
+  void _followBusMovement(double latitude, double longitude) {
+    if (mapController != null) {
+      // Only move the camera if the bus is currently selected for focus
+      if (_focusedBus == 'user' || (_focusedBus == 'bulanBus' && latitude == _bulanBusLatitude && longitude == _bulanBusLongitude) || (_focusedBus == 'matnogBus' && latitude == _matnogBusLatitude && longitude == _matnogBusLongitude)) {
+        mapController.animateCamera(
+          CameraUpdate.newLatLng(
+            LatLng(latitude, longitude),
+          ),
+        );
+      }
+    }
+  }
+  void _updateBulanBusLocation(double latitude, double longitude) {
+    setState(() {
+      _markers.removeWhere((marker) => marker.markerId.value == 'bulanBus');
+      _markers.add(
+        Marker(
+          markerId: MarkerId('bulanBus'),
+          position: LatLng(latitude, longitude),
+          icon: busIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        ),
+      );
+    });
+
+    // Only follow Bulan Bus if it's the currently focused bus
+    if (_focusedBus == 'bulanBus') {
+      _followBusMovement(latitude, longitude);
+    }
+  }
+
+  void _updateMatnogBusLocation(double latitude, double longitude) {
+    setState(() {
+      _markers.removeWhere((marker) => marker.markerId.value == 'matnogBus');
+      _markers.add(
+        Marker(
+          markerId: MarkerId('matnogBus'),
+          position: LatLng(latitude, longitude),
+          icon: busIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        ),
+      );
+    });
+
+    // Only follow Matnog Bus if it's the currently focused bus
+    if (_focusedBus == 'matnogBus') {
+      _followBusMovement(latitude, longitude);
+    }
+  }
   Future<void> _cancelRequest() async {
     if (currentPosition != null && passengerSnapshot != null) {
       try {
@@ -321,53 +395,24 @@ class _PassengerPageState extends State<PassengerPage> {
       }
     }
   }
-
-
-
-  void _updateBusLocation(double latitude, double longitude) {
-    setState(() {
-      _busLatitude = latitude;
-      _busLongitude = longitude;
-      _markers = {
-        if (currentPosition != null)
-          Marker(
-            markerId: MarkerId('currentLocation'),
-            position:
-                LatLng(currentPosition!.latitude, currentPosition!.longitude),
-            icon: customIcon ?? BitmapDescriptor.defaultMarker,
-          ),
-        Marker(
-          markerId: MarkerId('busLocation'),
-          position: LatLng(latitude, longitude),
-          icon: busIcon ??
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-        ),
-      };
-    });
-
-    // Center the map on the bus location only if _shouldFollowBus is true
-    if (_shouldFollowBus && mapController != null) {
-      mapController.animateCamera(
-        CameraUpdate.newLatLng(
-          LatLng(latitude, longitude),
-        ),
-      );
-    }
-  }
-
   Future<void> _getBusAddressFromLatLng(
-      double latitude, double longitude) async {
+      double latitude, double longitude, String busLocation) async {
     try {
-      List<Placemark> placemarks =
-          await placemarkFromCoordinates(latitude, longitude);
+      List<Placemark> placemarks = await placemarkFromCoordinates(latitude, longitude);
       Placemark place = placemarks[0];
       setState(() {
-        busAddress =
-            "${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}";
+        busAddress = "$busLocation Bus Address: ${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}";
       });
     } catch (e) {
       print('Error getting bus address: $e');
     }
+  }
+  int getOccupiedSeatsCount() {
+    return _seatSelected.where((seat) => seat).length;
+  }
+
+  int getAvailableSeatsCount() {
+    return _seatSelected.length - getOccupiedSeatsCount();
   }
 
   void _showLogoutDialog() {
@@ -405,7 +450,6 @@ class _PassengerPageState extends State<PassengerPage> {
       },
     );
   }
-
   void _onMapTypeChanged(MapType mapType) {
     setState(() {
       _currentMapType = mapType;
@@ -413,31 +457,77 @@ class _PassengerPageState extends State<PassengerPage> {
   }
 
   void _onLocationOptionSelected(String value) {
-    if (value == 'user') {
-      _shouldFollowBus = false;
-      _shouldFollowUser = true; // Ensure user location is followed if selected
-      if (currentPosition != null && mapController != null) {
-        mapController.animateCamera(
-          CameraUpdate.newLatLng(
-            LatLng(currentPosition!.latitude, currentPosition!.longitude),
-          ),
-        );
+    setState(() {
+      if (value == 'user') {
+        _shouldFollowBus = false;
+        _shouldFollowUser = true;
+        _focusedBus = 'user'; // Set focus to user location
+        if (currentPosition != null && mapController != null) {
+          mapController.animateCamera(
+            CameraUpdate.newLatLng(
+              LatLng(currentPosition!.latitude, currentPosition!.longitude),
+            ),
+          );
+        }
+        busAddress = null; // Clear bus address since user is focused
+      } else if (value == 'bulanBus') {
+        _shouldFollowUser = false;
+        _shouldFollowBus = true;
+        _focusedBus = 'bulanBus'; // Set focus to Bulan Bus
+        _getBusAddressFromLatLng(_bulanBusLatitude, _bulanBusLongitude, 'Bulan');
+        _routeText = 'Loading route...'; // Indicate that the route is being fetched
+
+        // Fetch route from Firebase and update route text
+        FirebaseDatabase.instance.ref().child('/Bus/BulanBus/Route').get().then((snapshot) {
+          setState(() {
+            _routeText = snapshot.value.toString();
+          });
+        }).catchError((error) {
+          setState(() {
+            _routeText = 'Failed to load route';
+          });
+          print('Error fetching route: $error');
+        });
+
+        // Animate camera to Bulan Bus location
+        if (mapController != null) {
+          mapController.animateCamera(
+            CameraUpdate.newLatLng(
+              LatLng(_bulanBusLatitude, _bulanBusLongitude),
+            ),
+          );
+        }
+      } else if (value == 'matnogBus') {
+        _shouldFollowUser = false;
+        _shouldFollowBus = true;
+        _focusedBus = 'matnogBus'; // Set focus to Matnog Bus
+        _getBusAddressFromLatLng(_matnogBusLatitude, _matnogBusLongitude, 'Matnog');
+        _routeText = 'Loading route...'; // Indicate that the route is being fetched
+
+        // Fetch route from Firebase and update route text
+        FirebaseDatabase.instance.ref().child('/Bus/MatnogBus/Route').get().then((snapshot) {
+          setState(() {
+            _routeText = snapshot.value.toString();
+          });
+        }).catchError((error) {
+          setState(() {
+            _routeText = 'Failed to load route';
+          });
+          print('Error fetching route: $error');
+        });
+
+        // Animate camera to Matnog Bus location
+        if (mapController != null) {
+          mapController.animateCamera(
+            CameraUpdate.newLatLng(
+              LatLng(_matnogBusLatitude, _matnogBusLongitude),
+            ),
+          );
+        }
       }
-    } else if (value == 'bus') {
-      _shouldFollowBus = true;
-      _shouldFollowUser =
-          false; // Stop following user location if bus location is selected
-      if (_busLatitude != 0.0 &&
-          _busLongitude != 0.0 &&
-          mapController != null) {
-        mapController.animateCamera(
-          CameraUpdate.newLatLng(
-            LatLng(_busLatitude, _busLongitude),
-          ),
-        );
-      }
-    }
+    });
   }
+
 
   Widget _buildMap() {
     return GoogleMap(
@@ -452,7 +542,6 @@ class _PassengerPageState extends State<PassengerPage> {
       mapType: _currentMapType,
     );
   }
-
   @override
   Widget build(BuildContext context) {
     final passengerSnapshot =
@@ -465,10 +554,17 @@ class _PassengerPageState extends State<PassengerPage> {
           IconButton(
             icon: Icon(Icons.logout),
             onPressed: _showLogoutDialog,
-          ),
-          PopupMenuButton<String>(
+          ),PopupMenuButton<String>(
             icon: Icon(Icons.location_searching),
-            onSelected: _onLocationOptionSelected,
+            onSelected: (value) {
+              _onLocationOptionSelected(value);
+              // Update database reference based on bus selection
+              if (value == 'matnogBus') {
+                _updateDatabaseRef('Matnog');
+              } else if (value == 'bulanBus') {
+                _updateDatabaseRef('Bulan');
+              }
+            },
             itemBuilder: (BuildContext context) {
               return [
                 PopupMenuItem<String>(
@@ -476,8 +572,12 @@ class _PassengerPageState extends State<PassengerPage> {
                   child: Text('User Location'),
                 ),
                 PopupMenuItem<String>(
-                  value: 'bus',
-                  child: Text('Bus Location'),
+                  value: 'bulanBus',
+                  child: Text('Bulan Bus Location'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'matnogBus',
+                  child: Text('Matnog Bus Location'),
                 ),
               ];
             },
@@ -511,6 +611,23 @@ class _PassengerPageState extends State<PassengerPage> {
       body: Stack(
         children: [
           _buildMap(),
+          Positioned(
+            top: 20.0,
+            left: 50.0,
+            right: 50.0,
+            child: Container(
+              padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 5.0),
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12.0),
+              ),
+              child: Text(
+                _routeText, // Display the route text
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
           DraggableScrollableSheet(
             initialChildSize: 0.7,
             minChildSize: 0.1,
@@ -549,7 +666,18 @@ class _PassengerPageState extends State<PassengerPage> {
                               _buildDetailRow('Passenger Type',
                                   passengerSnapshot!['passengerType']),
                               _buildLocationRow(),
+                              Center(
+                                child: Text('Bus Details', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),),
+                              ),
                               _buildBusLocationRow(),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text('Available Seats: ${getAvailableSeatsCount()}',style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),),
+                                  SizedBox(width: 10,),
+                                  Text('Occupied Seats: ${getOccupiedSeatsCount()}',style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold,color: Colors.red),),
+                                ],
+                              ),
                               Center(
                                 child: Text(
                                   _isClicked ? '' : 'Click to be Pick Up',
@@ -713,11 +841,23 @@ class _PassengerPageState extends State<PassengerPage> {
   }
 
   Widget _buildSeats() {
+    int occupiedSeats = _seatSelected.where((seat) => seat).length;
+    int availableSeats = _seatSelected.length - occupiedSeats;
+
     return Center(
       child: Column(
         children: [
-          Text("Seat Reservation",
+          Text("Seat Details",
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          SizedBox(height: 10),
+          Text(
+            "Available Seats: $availableSeats",
+            style: TextStyle(fontSize: 18, color: Colors.green),
+          ),
+          Text(
+            "Occupied Seats: $occupiedSeats",
+            style: TextStyle(fontSize: 18, color: Colors.red),
+          ),
           SizedBox(height: 20),
           _buildSeatRow([0], "Driver"),
           SizedBox(height: 20),
@@ -740,6 +880,7 @@ class _PassengerPageState extends State<PassengerPage> {
       ),
     );
   }
+
 
   Widget _buildSeatRow(List<int?> seatIndices, [String? label]) {
     return Row(

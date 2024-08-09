@@ -6,15 +6,15 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 
-class Test extends StatefulWidget {
+class BulanDriver extends StatefulWidget {
   @override
-  _TestState createState() => _TestState();
+  _BulanDriverState createState() => _BulanDriverState();
 }
 
-class _TestState extends State<Test> {
+class _BulanDriverState extends State<BulanDriver> {
   int _selectedIndex = 0;
   List<bool> _seatSelected = List.generate(25, (index) => false);
-  final DatabaseReference _databaseRef = FirebaseDatabase.instance.ref().child('Seats');
+  final DatabaseReference _databaseRef = FirebaseDatabase.instance.ref().child('/Bulan/Seats');
   late StreamSubscription<DatabaseEvent> _seatDataSubscription;
   Completer<GoogleMapController> _controller = Completer();
   Position? _currentPosition;
@@ -26,6 +26,9 @@ class _TestState extends State<Test> {
   BitmapDescriptor? _pickupMarkerIcon; // Add a new variable for the pickup marker icon
   int availableSeats1 = 0;
   int occupiedSeats1 = 0;
+  String _selectedRoute = 'Bulan to Sorsogon'; // Default route
+  final DatabaseReference _routeRef = FirebaseDatabase.instance.ref('/Bus/BulanBus/Route');
+
 
 
 
@@ -39,6 +42,13 @@ class _TestState extends State<Test> {
     /*_loadPickupPoints();
     _loadPickupMarker();*/
     _loadMarkers();
+    // Listen for route changes from Firebase
+    _routeRef.onValue.listen((event) {
+      final String route = event.snapshot.value.toString();
+      setState(() {
+        _selectedRoute = route;
+      });
+    });
   }
 
   Future<void> _getCurrentLocation() async {
@@ -73,7 +83,7 @@ class _TestState extends State<Test> {
       _updateCameraPosition(LatLng(_currentPosition!.latitude, _currentPosition!.longitude));
 
       // Send location to Firebase Realtime Database
-      FirebaseDatabase.instance.ref().child('Bus/Location').set({
+      FirebaseDatabase.instance.ref().child('Bus/BulanBus/Location').set({
         'latitude': _currentPosition!.latitude,
         'longitude': _currentPosition!.longitude,
       });
@@ -87,7 +97,7 @@ class _TestState extends State<Test> {
         _updateCameraPosition(LatLng(_currentPosition!.latitude, _currentPosition!.longitude));
 
         // Send updated location to Firebase Realtime Database
-        FirebaseDatabase.instance.ref().child('Bus/Location').set({
+        FirebaseDatabase.instance.ref().child('Bus/BulanBus/Location').set({
           'latitude': _currentPosition!.latitude,
           'longitude': _currentPosition!.longitude,
         });
@@ -125,8 +135,8 @@ class _TestState extends State<Test> {
     availableSeats1 = _seatSelected.where((selected) => !selected).length;
     occupiedSeats1 = _seatSelected.where((selected) => selected).length;
 
-    _databaseRef.child('Available').set(availableSeats);
-    _databaseRef.child('Occupied').set(occupiedSeats);
+    _databaseRef.child('Bulan_Available').set(availableSeats);
+    _databaseRef.child('Bulan_Occupied').set(occupiedSeats);
   }
 
 
@@ -280,9 +290,9 @@ class _TestState extends State<Test> {
                     ),
                   ),
                   Text(
-                      'People to Pick Up: $_pickupCount',
-                      style: TextStyle(fontSize: 16, color: Colors.blueAccent),
-                    ),
+                    'People to Pick Up: $_pickupCount',
+                    style: TextStyle(fontSize: 16, color: Colors.blueAccent),
+                  ),
 
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -403,6 +413,74 @@ class _TestState extends State<Test> {
       },
     );
   }
+
+  Widget _buildFloatingTextWithMenu() {
+    return Positioned(
+      top: 20,
+      left: 20,
+      child: GestureDetector(
+        onTap: () {
+          // Show the popup menu
+          _showPopupMenu();
+        },
+        child: Material(
+          color: Colors.transparent,
+          child: Row(
+            children: [
+              // Floating text
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: Colors.black.withOpacity(0.5),
+                child: Text(
+                  'Route Selector',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ),
+              SizedBox(width: 10),
+              // Popup menu button (hidden, just for appearance)
+              Icon(Icons.swap_horiz, color: Colors.white),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showPopupMenu() async {
+    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final Offset offset = renderBox.localToGlobal(Offset.zero);
+
+    await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        offset.dx,
+        offset.dy + 40,
+        offset.dx + renderBox.size.width,
+        offset.dy,
+      ),
+      items: [
+        PopupMenuItem<String>(
+          value: 'Bulan to Sorsogon',
+          child: Text('Bulan to Sorsogon'),
+        ),
+        PopupMenuItem<String>(
+          value: 'Sorsogon to Bulan',
+          child: Text('Sorsogon to Bulan'),
+        ),
+      ],
+      initialValue: null,
+    ).then((String? value) {
+      if (value != null) {
+        _updateRouteInFirebase(value);
+      }
+    });
+  }
+
+  void _updateRouteInFirebase(String route) {
+    FirebaseDatabase.instance.ref().child('/Bus/BulanBus/Route').set(route);
+  }
+
+
 
   Widget _buildSeats() {
     return Stack(
@@ -528,7 +606,7 @@ class _TestState extends State<Test> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Pick Me Up List'),
+        title: Text('Driver', style: TextStyle(fontSize: 18),),
         actions: [
           PopupMenuButton<MapType>(
             icon: Icon(Icons.map),
@@ -542,11 +620,68 @@ class _TestState extends State<Test> {
               );
             }).toList(),
           ),
+          SizedBox(width: 10),
+          PopupMenuButton<String>(
+            onSelected: (String route) {
+              setState(() {
+                _selectedRoute = route;
+                // Update Firebase Database with the selected route
+                FirebaseDatabase.instance.ref().child('/Bus/BulanBus/Route').set(_selectedRoute);
+              });
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<String>(
+                value: 'Bulan to Sorsogon',
+                child: Text('Bulan to\nSorsogon'),
+              ),
+              PopupMenuItem<String>(
+                value: 'Sorsogon to Bulan',
+                child: Text('Sorsogon to\nBulan'),
+              ),
+            ],
+            child: Row(
+              children: [
+                Icon(Icons.directions_bus),
+                SizedBox(width: 8),
+                Text('Routes'),
+                Icon(Icons.arrow_drop_down),
+              ],
+            ),
+          ),
+          SizedBox(width: 10),
         ],
       ),
       body: Stack(
         children: [
           _buildMap(),
+          Positioned(
+            top: 20.0,
+            left: 50.0,
+            right: 50.0,
+            child: Container(
+              padding: EdgeInsets.all(8.0),
+              constraints: BoxConstraints(
+                maxWidth: 300.0, // Adjust this value to fit approximately 30 characters
+              ),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(12.0),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('Route: ' ,style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),),
+                  Text(
+                    _selectedRoute, // Display the route text
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+
           _selectedIndex == 0 ? _buildPickUpList() : _buildSeats(),
         ],
       ),
@@ -589,9 +724,9 @@ class _TestState extends State<Test> {
     );
   }
 
-void main() {
-  runApp(MaterialApp(
-    home: Test(),
-  ));
-}
+  void main() {
+    runApp(MaterialApp(
+      home: BulanDriver(),
+    ));
+  }
 }

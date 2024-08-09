@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'DriverPage.dart';
+import 'Test.dart';
 import 'RoleSelectionPage.dart';
-
+import 'bulan_driver.dart';
+import 'matnog_driver.dart';
 
 class DriverLoginPage extends StatefulWidget {
   @override
@@ -116,11 +118,17 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
                     String email = _emailController.text;
                     String password = _passwordController.text;
 
-                    if (email == 'driver@example.com' && password == '12345678') {
+                    if (email == 'bulan@driver.com' && password == '12345678') {
                       await _savePreferences(email, password);
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => DriverPage()),
+                        MaterialPageRoute(builder: (context) => BulanDriver()),
+                      );
+                    } else if (email == 'matnog@driver.com' && password == '12345678') {
+                      await _savePreferences(email, password);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => MatnogDriver()),
                       );
                     } else {
                       showDialog(
@@ -150,3 +158,4 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
     );
   }
 }
+
